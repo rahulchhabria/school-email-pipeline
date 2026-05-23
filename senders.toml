@@ -1,0 +1,14 @@
+# Per-sender rules applied before the routing policy engine.
+# Keys are email addresses or glob patterns (* matches any substring).
+# Priority: deny > allow > default.
+
+[allow]
+"office@lincolnelementary.edu" = "high_priority"
+"noreply@lincolnelementary.edu" = "high_priority"
+"pchen@lincolnelementary.edu" = "high_priority"
+"rmartinez@lincolnelementary.edu" = "high_priority"
+
+[deny]
+"*@volunteersignup.org" = "always_suppress"
+"*@schoolmint.com" = "always_suppress"
+"*@remind.com" = "digest_only"

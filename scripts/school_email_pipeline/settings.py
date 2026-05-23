@@ -52,6 +52,7 @@ class PipelineSettings:
     dry_run: bool
     ash_cwd: Path
     ash_model: str | None
+    senders_config_path: Path
 
 
 def load_pipeline_settings() -> PipelineSettings:
@@ -91,4 +92,7 @@ def load_pipeline_settings() -> PipelineSettings:
         dry_run=env_bool("EMAIL_FORWARD_DRY_RUN"),
         ash_cwd=Path(os.environ.get("EMAIL_FORWARD_ASH_CWD", DEFAULT_ASH_CWD)),
         ash_model=os.environ.get("EMAIL_FORWARD_ASH_MODEL", "").strip() or None,
+        senders_config_path=Path(
+            os.environ.get("SENDERS_CONFIG_PATH", SKILL_DIR / "senders.toml")
+        ),
     )

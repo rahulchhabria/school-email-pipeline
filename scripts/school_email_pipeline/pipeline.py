@@ -17,6 +17,7 @@ from .models import (
 from .parser import parse_school_email
 from .pioneer import PioneerUnavailable, classify_with_pioneer
 from .routing import load_policy, route_email
+from .senders import check_sender, load_sender_policy
 from .settings import PipelineSettings
 from .storage import EmailStore
 from .telegram import format_telegram_message, send_telegram_alert
@@ -64,13 +65,26 @@ async def process_school_email(
             + "]",
         )
 
+        sender_override = _check_sender_override(email.sender, settings)
+        if sender_override == "always_suppress":
+            store.update_stage(email_id, "sender_suppressed")
+            logger.info(
+                "sender_suppressed",
+                extra={"message_id": email.message_id, "sender": email.sender},
+            )
+            return PipelineResult(
+                status="sender_suppressed",
+                message_id=email.message_id,
+                email_id=email_id,
+            )
+
         logger.info("stage_parse_started", extra={"message_id": email.message_id})
         parsed, pioneer_inference_id = _parse(email, cleaned, entities, settings)
         if pioneer_inference_id:
             store.set_pioneer_inference_id(email_id, pioneer_inference_id)
 
         logger.info("stage_routing_started", extra={"message_id": email.message_id})
-        routing = _route(parsed, entities, settings)
+        routing = _route(parsed, entities, settings, sender_override=sender_override)
         store.store_parse(email_id, parsed, routing)
 
         telegram = TelegramDelivery()
@@ -115,6 +129,11 @@ async def process_school_email(
         raise
 
 
+def _check_sender_override(sender: str, settings: PipelineSettings) -> str | None:
+    policy = load_sender_policy(settings.senders_config_path)
+    return check_sender(sender, policy)
+
+
 def _parse(
     email: PipelineEmail,
     cleaned: str,
@@ -133,7 +152,19 @@ def _route(
     parsed: StructuredParseResult,
     entities: list,
     settings: PipelineSettings,
+    *,
+    sender_override: str | None = None,
 ) -> RoutingDecision:
+    if sender_override == "digest_only":
+        return RoutingDecision(
+            actions=["add_to_daily_digest"],
+            reasons=["sender policy: digest_only"],
+            relevance="both",
+            send_telegram_now=False,
+            processing_status="queued_digest",
+        )
+    if sender_override == "high_priority":
+        parsed.importance = "high"  # type: ignore[assignment]
     if settings.enable_ash:
         try:
             return route_with_ash(parsed, settings)
