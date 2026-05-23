@@ -6,6 +6,7 @@
 #   "httpx>=0.27.0",
 #   "openai>=1.50.0",
 #   "pydantic>=2.9.0",
+#   "sentry-sdk[fastapi]>=2.0.0",
 # ]
 # ///
 """Receive forwarded-email webhooks, parse school emails, and relay Telegram alerts."""
@@ -27,10 +28,12 @@ from typing import Any
 from urllib.parse import parse_qs
 
 import httpx
+import sentry_sdk
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from school_email_pipeline.actions import dispatch_callback_action
+from school_email_pipeline.digest import format_digest
 from school_email_pipeline.models import PipelineEmail
 from school_email_pipeline.pipeline import process_school_email
 from school_email_pipeline.settings import load_pipeline_settings
@@ -389,6 +392,13 @@ async def process_email(email: NormalizedEmail, settings: Settings) -> dict[str,
             "provider": email.provider,
         },
     )
+    sentry_sdk.set_tag("email.message_id", email.message_id)
+    sentry_sdk.set_tag("email.sender", email.from_)
+    sentry_sdk.set_context("email", {
+        "message_id": email.message_id,
+        "sender": email.from_,
+        "subject": email.subject,
+    })
     pipeline_settings = load_pipeline_settings()
     pipeline_email = _to_pipeline_email(email)
 
@@ -481,6 +491,49 @@ def create_app(settings: Settings) -> FastAPI:
                 )
         return {"ok": True, "handled": handled, "action": action_result}
 
+    @app.get("/digest")
+    async def digest(hours: int = 24) -> dict[str, Any]:
+        pipeline_settings = load_pipeline_settings()
+        store = EmailStore(pipeline_settings.database_url)
+        emails = store.get_recent_emails(hours=hours)
+        text = format_digest(emails, hours=hours)
+
+        if not settings.dry_run and settings.telegram_bot_token and settings.telegram_chat_id:
+            try:
+                await send_telegram(settings, text)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("digest_send_failed", extra={"error": str(exc)})
+
+        return {"ok": True, "hours": hours, "count": len(emails), "text": text}
+
+    @app.post("/webhooks/telegram/command")
+    async def telegram_command(request: Request) -> dict[str, Any]:
+        """Handle /digest and other commands forwarded by ash."""
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Command payload must be an object")
+        message = payload.get("message") or {}
+        text = str(message.get("text") or "").strip()
+        chat_id = message.get("chat", {}).get("id") if isinstance(message.get("chat"), dict) else None
+
+        if text.startswith("/digest"):
+            parts = text.split()
+            hours = 24
+            if len(parts) > 1:
+                try:
+                    hours = int(parts[1])
+                except ValueError:
+                    hours = 24
+            pipeline_settings = load_pipeline_settings()
+            store = EmailStore(pipeline_settings.database_url)
+            emails = store.get_recent_emails(hours=hours)
+            digest_text = format_digest(emails, hours=hours)
+            if not settings.dry_run and settings.telegram_bot_token and settings.telegram_chat_id:
+                await send_telegram(settings, digest_text)
+            return {"ok": True, "command": "digest", "hours": hours}
+
+        return {"ok": True, "command": "unknown", "text": text}
+
     return app
 
 
@@ -516,11 +569,34 @@ def _print_sample(message_id: str) -> None:
     print(json.dumps(payload, indent=2))
 
 
+def _init_sentry() -> None:
+    dsn = os.environ.get("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+    try:
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=float(
+                os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")
+            ),
+            environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+            release=os.environ.get("SENTRY_RELEASE", "school-email-pipeline@0.1.0"),
+            send_default_pii=False,
+        )
+        logger.info("sentry_initialized")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sentry_init_failed", extra={"error": str(exc)})
+
+
 def main() -> int:
     logging.basicConfig(
         level=os.environ.get("EMAIL_FORWARD_LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    _init_sentry()
     args = _parse_args()
     settings = load_settings()
 
