@@ -40,6 +40,9 @@ class PipelineSettings:
     enable_pioneer: bool
     pioneer_api_key: str
     pioneer_model_id: str
+    pioneer_base_url: str
+    pioneer_threshold: float
+    pioneer_timeout_seconds: float
     enable_ash: bool
     ash_base_url: str
     body_char_limit: int
@@ -65,7 +68,18 @@ def load_pipeline_settings() -> PipelineSettings:
         enable_gliner=env_bool("ENABLE_GLINER"),
         enable_pioneer=env_bool("ENABLE_PIONEER"),
         pioneer_api_key=os.environ.get("PIONEER_API_KEY", "").strip(),
-        pioneer_model_id=os.environ.get("PIONEER_MODEL_ID", "").strip(),
+        pioneer_model_id=os.environ.get("PIONEER_MODEL_ID", "gliner2-large").strip()
+        or "gliner2-large",
+        pioneer_base_url=os.environ.get(
+            "PIONEER_BASE_URL", "https://api.pioneer.ai"
+        ).strip()
+        or "https://api.pioneer.ai",
+        pioneer_threshold=float(
+            os.environ.get("PIONEER_THRESHOLD", "0.4").strip() or "0.4"
+        ),
+        pioneer_timeout_seconds=float(
+            os.environ.get("PIONEER_TIMEOUT_SECONDS", "30").strip() or "30"
+        ),
         enable_ash=env_bool("ENABLE_ASH"),
         ash_base_url=os.environ.get("ASH_BASE_URL", "").strip(),
         body_char_limit=max(

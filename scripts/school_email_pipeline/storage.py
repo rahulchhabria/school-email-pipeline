@@ -50,11 +50,18 @@ class EmailStore:
                     feedback_json TEXT,
                     processing_status TEXT NOT NULL,
                     error_logs_json TEXT,
+                    pioneer_inference_id TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            existing = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(emails)").fetchall()
+            }
+            if "pioneer_inference_id" not in existing:
+                conn.execute("ALTER TABLE emails ADD COLUMN pioneer_inference_id TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS feedback (
@@ -118,6 +125,7 @@ class EmailStore:
             "feedback_json",
             "processing_status",
             "error_logs_json",
+            "pioneer_inference_id",
         }
         updates = {"processing_status": status, **fields, "updated_at": _utc_now()}
         columns = [key for key in updates if key in allowed or key == "updated_at"]
@@ -144,6 +152,26 @@ class EmailStore:
         if message_id is None:
             return
         self.update_stage(email_id, "delivered", telegram_message_id=message_id)
+
+    def set_pioneer_inference_id(self, email_id: int, inference_id: str | None) -> None:
+        if not inference_id:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE emails SET pioneer_inference_id = ?, updated_at = ? WHERE id = ?",
+                (inference_id, _utc_now(), email_id),
+            )
+
+    def get_pioneer_inference_id(self, email_id: int) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT pioneer_inference_id FROM emails WHERE id = ?",
+                (email_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        value = row["pioneer_inference_id"]
+        return str(value) if value else None
 
     def append_error(self, email_id: int, message: str) -> None:
         with self._connect() as conn:

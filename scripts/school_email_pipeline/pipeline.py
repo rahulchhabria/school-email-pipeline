@@ -65,7 +65,9 @@ async def process_school_email(
         )
 
         logger.info("stage_parse_started", extra={"message_id": email.message_id})
-        parsed = _parse(email, cleaned, entities, settings)
+        parsed, pioneer_inference_id = _parse(email, cleaned, entities, settings)
+        if pioneer_inference_id:
+            store.set_pioneer_inference_id(email_id, pioneer_inference_id)
 
         logger.info("stage_routing_started", extra={"message_id": email.message_id})
         routing = _route(parsed, entities, settings)
@@ -118,13 +120,13 @@ def _parse(
     cleaned: str,
     entities: list,
     settings: PipelineSettings,
-) -> StructuredParseResult:
+) -> tuple[StructuredParseResult, str | None]:
     if settings.enable_pioneer:
         try:
             return classify_with_pioneer(email, cleaned, entities, settings)
         except PioneerUnavailable:
             logger.info("pioneer_unavailable_falling_back_to_openai")
-    return parse_school_email(email, cleaned, entities, settings)
+    return parse_school_email(email, cleaned, entities, settings), None
 
 
 def _route(
