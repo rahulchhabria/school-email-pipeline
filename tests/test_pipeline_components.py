@@ -32,7 +32,10 @@ def _settings(tmp_path: Path, *, enable_gliner: bool = False) -> PipelineSetting
         enable_gliner=enable_gliner,
         enable_pioneer=False,
         pioneer_api_key="",
-        pioneer_model_id="",
+        pioneer_model_id="gliner2-large",
+        pioneer_base_url="https://api.pioneer.ai",
+        pioneer_threshold=0.4,
+        pioneer_timeout_seconds=30.0,
         enable_ash=False,
         ash_base_url="",
         body_char_limit=12000,
@@ -42,6 +45,7 @@ def _settings(tmp_path: Path, *, enable_gliner: bool = False) -> PipelineSetting
         dry_run=True,
         ash_cwd=tmp_path,
         ash_model=None,
+        senders_config_path=tmp_path / "senders.toml",
     )
 
 
