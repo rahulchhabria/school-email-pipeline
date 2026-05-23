@@ -1,0 +1,30 @@
+{
+  "email_type": "emergency",
+  "audience": {
+    "applies_to_second_grader": true,
+    "applies_to_fifth_grader": true,
+    "applies_to_whole_school": true,
+    "confidence": 0.99
+  },
+  "importance": "urgent",
+  "parent_action_required": true,
+  "action_items": [
+    {
+      "action": "Pick up children from school by 1:00 PM today due to power outage",
+      "deadline": "2026-05-12",
+      "applies_to": "both",
+      "confidence": 0.99
+    },
+    {
+      "action": "Call school office at (650) 555-0147 if unable to pick up children",
+      "deadline": "2026-05-12",
+      "applies_to": "both",
+      "confidence": 0.97
+    }
+  ],
+  "calendar_items": [],
+  "telegram_summary": "🚨 URGENT: Emergency early dismissal TODAY due to power outage. Pick up BOTH kids by 1:00 PM. After-school programs cancelled. Call (650) 555-0147 if you can't make it.",
+  "why_it_matters": "Your children must be picked up from school by 1:00 PM today due to a power outage. Students not picked up will be moved to the district office. This requires immediate action.",
+  "confidence": 0.99,
+  "needs_human_review": false
+}

@@ -1,0 +1,28 @@
+{
+  "email_type": "sports",
+  "audience": {
+    "applies_to_second_grader": false,
+    "applies_to_fifth_grader": true,
+    "applies_to_whole_school": false,
+    "confidence": 0.97
+  },
+  "importance": "medium",
+  "parent_action_required": false,
+  "action_items": [],
+  "calendar_items": [
+    {
+      "title": "5th Grade Track & Field Day",
+      "start": "09:00",
+      "end": "14:00",
+      "date_text": "Saturday, May 30, 2026",
+      "time_text": "9:00 AM - 2:00 PM",
+      "location": "Lincoln Elementary School Field",
+      "applies_to": "5th grader",
+      "confidence": 0.98
+    }
+  ],
+  "telegram_summary": "🏃 5th Grade Track & Field Day on Sat May 30, 9am-2pm at school field. Events include dashes, long jump, shot put, relay. Lunch provided. Wear athletic clothes & sunscreen. Parents welcome to watch!",
+  "why_it_matters": "Your 5th grader automatically participates in Track & Field Day. Good to know the schedule so you can cheer them on or plan your Saturday around it.",
+  "confidence": 0.97,
+  "needs_human_review": false
+}

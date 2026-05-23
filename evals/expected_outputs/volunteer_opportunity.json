@@ -1,0 +1,28 @@
+{
+  "email_type": "announcement",
+  "audience": {
+    "applies_to_second_grader": true,
+    "applies_to_fifth_grader": true,
+    "applies_to_whole_school": true,
+    "confidence": 0.95
+  },
+  "importance": "low",
+  "parent_action_required": false,
+  "action_items": [],
+  "calendar_items": [
+    {
+      "title": "Spring Book Fair",
+      "start": null,
+      "end": null,
+      "date_text": "May 19-23, 2026",
+      "time_text": "Various shifts 8am-1pm, evening 5:30-7:30pm on Tue",
+      "location": "Lincoln Elementary Library",
+      "applies_to": "both",
+      "confidence": 0.90
+    }
+  ],
+  "telegram_summary": "📚 Spring Book Fair May 19-23 in the library. Volunteers still needed for Wed & Thu lunch shifts. Sign up online if interested.",
+  "why_it_matters": "Nice to know the book fair is happening if your kids want to buy books. Volunteering is optional — only relevant if you have time and interest.",
+  "confidence": 0.93,
+  "needs_human_review": false
+}

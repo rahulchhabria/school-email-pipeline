@@ -1,0 +1,17 @@
+{
+  "email_type": "lunch",
+  "audience": {
+    "applies_to_second_grader": true,
+    "applies_to_fifth_grader": true,
+    "applies_to_whole_school": true,
+    "confidence": 0.95
+  },
+  "importance": "low",
+  "parent_action_required": false,
+  "action_items": [],
+  "calendar_items": [],
+  "telegram_summary": "🍽️ Lunch menu change week of May 11: Mon chicken nuggets → fish sticks, Tue chicken teriyaki → beef teriyaki, Wed chicken Caesar → turkey Caesar. Thu-Fri unchanged. Salad bar still available daily.",
+  "why_it_matters": "Only relevant if your kids eat school lunch and you care about the specific menu, especially if they have dietary restrictions or are picky about the substituted items.",
+  "confidence": 0.95,
+  "needs_human_review": false
+}

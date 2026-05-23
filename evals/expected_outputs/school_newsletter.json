@@ -1,0 +1,58 @@
+{
+  "email_type": "newsletter",
+  "audience": {
+    "applies_to_second_grader": true,
+    "applies_to_fifth_grader": true,
+    "applies_to_whole_school": true,
+    "confidence": 0.99
+  },
+  "importance": "low",
+  "parent_action_required": false,
+  "action_items": [],
+  "calendar_items": [
+    {
+      "title": "PTA Meeting",
+      "start": "18:30",
+      "end": null,
+      "date_text": "Tuesday, May 20, 2026",
+      "time_text": "6:30 PM",
+      "location": "Staff Room, Lincoln Elementary",
+      "applies_to": "both",
+      "confidence": 0.95
+    },
+    {
+      "title": "Restaurant Night at Round Table Pizza",
+      "start": null,
+      "end": null,
+      "date_text": "Thursday, May 22, 2026",
+      "time_text": "All day",
+      "location": "Round Table Pizza, El Camino",
+      "applies_to": "both",
+      "confidence": 0.90
+    },
+    {
+      "title": "5th Grade Track & Field Day",
+      "start": null,
+      "end": null,
+      "date_text": "May 30, 2026",
+      "time_text": "TBD",
+      "location": "Lincoln Elementary School Field",
+      "applies_to": "5th grader",
+      "confidence": 0.92
+    },
+    {
+      "title": "2nd Grade Art Show",
+      "start": "17:00",
+      "end": null,
+      "date_text": "June 6, 2026",
+      "time_text": "5:00 PM",
+      "location": "Lincoln Elementary",
+      "applies_to": "2nd grader",
+      "confidence": 0.92
+    }
+  ],
+  "telegram_summary": "📰 Lincoln Newsletter: PTA mtg Tue 5/20, Restaurant Night Thu 5/22 at Round Table Pizza, no school Mon 5/26 (Memorial Day), 5th grade track day 5/30, 2nd grade art show 6/6.",
+  "why_it_matters": "General school updates. A few dates may be relevant — PTA meeting and restaurant night fundraiser affect both kids; track day applies to 5th grader; art show applies to 2nd grader.",
+  "confidence": 0.96,
+  "needs_human_review": false
+}

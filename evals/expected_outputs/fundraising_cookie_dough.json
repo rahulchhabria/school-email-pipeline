@@ -1,0 +1,41 @@
+{
+  "email_type": "fundraising",
+  "audience": {
+    "applies_to_second_grader": false,
+    "applies_to_fifth_grader": true,
+    "applies_to_whole_school": false,
+    "confidence": 0.96
+  },
+  "importance": "medium",
+  "parent_action_required": true,
+  "action_items": [
+    {
+      "action": "Help 5th grader sell cookie dough — goal of 10 tubs per student to fund science camp",
+      "deadline": "2026-10-15",
+      "applies_to": "5th grader",
+      "confidence": 0.95
+    },
+    {
+      "action": "Return order forms and money (checks to Lincoln Elementary 5th Grade Fund)",
+      "deadline": "2026-10-15",
+      "applies_to": "5th grader",
+      "confidence": 0.97
+    }
+  ],
+  "calendar_items": [
+    {
+      "title": "Cookie dough delivery",
+      "start": null,
+      "end": null,
+      "date_text": "November 7, 2026",
+      "time_text": "TBD",
+      "location": "Lincoln Elementary",
+      "applies_to": "5th grader",
+      "confidence": 0.92
+    }
+  ],
+  "telegram_summary": "🍪 FUNDRAISER: 5th grade cookie dough fundraiser now thru Oct 15. $16/tub, goal of 10 tubs per student. Proceeds fund promotion ceremony & science camp. Order forms + money due Oct 15.",
+  "why_it_matters": "This fundraiser directly funds your 5th grader's end-of-year activities including science camp. Participating helps ensure these activities are fully funded.",
+  "confidence": 0.94,
+  "needs_human_review": false
+}
