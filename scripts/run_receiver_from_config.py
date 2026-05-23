@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 import tomllib
 from pathlib import Path
 
@@ -49,8 +48,9 @@ def main() -> int:
     )
     env.setdefault("EMAIL_FORWARD_DRY_RUN", "0")
 
+    uv_bin = shutil.which("uv") or DEFAULT_UV_BIN
     args = [
-        shutil.which("uv") or DEFAULT_UV_BIN,
+        uv_bin,
         "run",
         str(RECEIVER_SCRIPT),
         "serve",
@@ -59,8 +59,7 @@ def main() -> int:
         "--port",
         "8787",
     ]
-    completed = subprocess.run(args, env=env, check=False)
-    return completed.returncode
+    os.execvpe(uv_bin, args, env)
 
 
 if __name__ == "__main__":
