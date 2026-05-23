@@ -1,0 +1,11 @@
+{
+  "immediate_importance": ["high", "urgent"],
+  "deadline_within_days": 7,
+  "high_calendar_confidence": 0.8,
+  "parser_confidence_review_threshold": 0.7,
+  "audience_confidence_review_threshold": 0.7,
+  "daily_digest_email_types": ["newsletter"],
+  "daily_digest_importance": ["low"],
+  "relevant_audiences": ["2nd grader", "5th grader", "both"],
+  "telegram_for_human_review": true
+}
