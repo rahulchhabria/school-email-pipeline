@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+
+_EMAIL_TYPE_FALLBACK: dict[str, str] = {
+    "action": "action_required",
+    "action item": "action_required",
+    "calendar": "calendar_event",
+    "event": "calendar_event",
+    "news": "newsletter",
+    "fundraiser": "fundraising",
+    "sport": "sports",
+    "urgent notice": "emergency",
+    "alert": "emergency",
+}
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+_ISO_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 
 EmailType = Literal[
     "announcement",
@@ -56,12 +72,49 @@ class Audience(BaseModel):
     applies_to_whole_school: bool
     confidence: float = Field(ge=0.0, le=1.0)
 
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                return 0.0
+        return v
+
 
 class ActionItem(BaseModel):
     action: str
     deadline: str | None = None
     applies_to: AppliesTo
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("action", mode="after")
+    @classmethod
+    def _strip_action(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("deadline", mode="after")
+    @classmethod
+    def _normalize_deadline(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        if _ISO_DATETIME_RE.match(v):
+            return v[:10]
+        if _ISO_DATE_RE.match(v):
+            return v[:10]
+        return v
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                return 0.0
+        return v
 
 
 class CalendarItem(BaseModel):
@@ -73,6 +126,53 @@ class CalendarItem(BaseModel):
     location: str | None = None
     applies_to: AppliesTo
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("title", mode="after")
+    @classmethod
+    def _strip_title(cls, v: str) -> str:
+        return v.strip() or "School event"
+
+    @field_validator("start", mode="after")
+    @classmethod
+    def _normalize_start(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        if _ISO_DATETIME_RE.match(v):
+            return v
+        if _ISO_DATE_RE.match(v):
+            return v
+        return v
+
+    @field_validator("end", mode="after")
+    @classmethod
+    def _normalize_end(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        if _ISO_DATETIME_RE.match(v):
+            return v
+        if _ISO_DATE_RE.match(v):
+            return v
+        return v
+
+    @field_validator("location", mode="after")
+    @classmethod
+    def _strip_location(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                return 0.0
+        return v
 
 
 class StructuredParseResult(BaseModel):
@@ -88,6 +188,57 @@ class StructuredParseResult(BaseModel):
     why_it_matters: str
     confidence: float = Field(ge=0.0, le=1.0)
     needs_human_review: bool
+
+    @field_validator("email_type", mode="before")
+    @classmethod
+    def _coerce_email_type(cls, v: Any) -> Any:
+        if not isinstance(v, str):
+            return "other"
+        normalized = v.strip().lower()
+        if normalized in {"announcement", "action_required", "calendar_event",
+                          "newsletter", "emergency", "fundraising", "sports",
+                          "lunch", "other"}:
+            return normalized
+        return _EMAIL_TYPE_FALLBACK.get(normalized, "other")
+
+    @field_validator("importance", mode="before")
+    @classmethod
+    def _coerce_importance(cls, v: Any) -> Any:
+        if not isinstance(v, str):
+            return "low"
+        normalized = v.strip().lower()
+        if normalized in {"ignore", "low", "medium", "high", "urgent"}:
+            return normalized
+        if normalized in {"critical", "asap"}:
+            return "urgent"
+        if normalized in {"important", "significant"}:
+            return "high"
+        return "low"
+
+    @field_validator("action_items", mode="after")
+    @classmethod
+    def _filter_empty_actions(cls, v: list[ActionItem]) -> list[ActionItem]:
+        return [item for item in v if item.action]
+
+    @field_validator("telegram_summary", mode="after")
+    @classmethod
+    def _strip_summary(cls, v: str) -> str:
+        return v.strip() or "School update"
+
+    @field_validator("why_it_matters", mode="after")
+    @classmethod
+    def _strip_why(cls, v: str) -> str:
+        return v.strip() or "Routine school update"
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                return 0.0
+        return v
 
 
 class RoutingDecision(BaseModel):

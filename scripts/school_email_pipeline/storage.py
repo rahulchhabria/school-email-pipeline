@@ -69,12 +69,25 @@ class EmailStore:
                     email_id INTEGER,
                     telegram_message_id INTEGER,
                     feedback_type TEXT NOT NULL,
+                    verdict TEXT,
+                    parsed_snapshot_json TEXT,
                     payload_json TEXT NOT NULL,
+                    replayed_at TEXT,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(email_id) REFERENCES emails(id)
                 )
                 """
             )
+            fb_cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(feedback)").fetchall()
+            }
+            if "verdict" not in fb_cols:
+                conn.execute("ALTER TABLE feedback ADD COLUMN verdict TEXT")
+            if "parsed_snapshot_json" not in fb_cols:
+                conn.execute("ALTER TABLE feedback ADD COLUMN parsed_snapshot_json TEXT")
+            if "replayed_at" not in fb_cols:
+                conn.execute("ALTER TABLE feedback ADD COLUMN replayed_at TEXT")
 
     def create_email_if_new(self, email: PipelineEmail) -> tuple[int, bool]:
         now = _utc_now()
@@ -189,21 +202,32 @@ class EmailStore:
                 (_json(errors), "error", _utc_now(), email_id),
             )
 
-    def log_feedback(self, event: FeedbackEvent) -> None:
+    def log_feedback(
+        self,
+        event: FeedbackEvent,
+        *,
+        verdict: str | None = None,
+        parsed_snapshot: StructuredParseResult | None = None,
+    ) -> None:
         created_at = event.created_at.isoformat() if event.created_at else _utc_now()
+        parsed_snapshot_json = (
+            parsed_snapshot.model_dump_json() if parsed_snapshot else None
+        )
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO feedback (
                     email_id, telegram_message_id, feedback_type,
-                    payload_json, created_at
+                    verdict, parsed_snapshot_json, payload_json, created_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event.email_id,
                     event.telegram_message_id,
                     event.feedback_type,
+                    verdict,
+                    parsed_snapshot_json,
                     _json(event.payload),
                     created_at,
                 ),
@@ -225,6 +249,71 @@ class EmailStore:
                     "UPDATE emails SET feedback_json = ?, updated_at = ? WHERE id = ?",
                     (_json(feedback), _utc_now(), event.email_id),
                 )
+
+    def get_pending_feedback(
+        self, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Return feedback rows that haven't been replayed to an external API yet."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT f.id, f.email_id, f.telegram_message_id, f.feedback_type,
+                       f.verdict, f.parsed_snapshot_json, f.payload_json,
+                       f.created_at, e.pioneer_inference_id
+                FROM feedback f
+                LEFT JOIN emails e ON f.email_id = e.id
+                WHERE f.replayed_at IS NULL AND f.verdict IS NOT NULL
+                ORDER BY f.created_at ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_replayed(self, feedback_ids: list[int]) -> None:
+        if not feedback_ids:
+            return
+        now = _utc_now()
+        placeholders = ",".join("?" for _ in feedback_ids)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE feedback SET replayed_at = ? WHERE id IN ({placeholders})",
+                (now, *feedback_ids),
+            )
+
+    def get_email_parsed_result(self, email_id: int) -> StructuredParseResult | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT structured_parse_json FROM emails WHERE id = ?",
+                (email_id,),
+            ).fetchone()
+        if row is None or not row["structured_parse_json"]:
+            return None
+        try:
+            return StructuredParseResult.model_validate_json(row["structured_parse_json"])
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get_recent_emails(
+        self, *, hours: int = 24, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Return emails from the last N hours with key fields for digest."""
+        cutoff = datetime.now(UTC) - __import__("datetime").timedelta(hours=hours)
+        cutoff_iso = cutoff.isoformat()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, sender, subject, processing_status,
+                       structured_parse_json, routing_decision_json,
+                       created_at
+                FROM emails
+                WHERE created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (cutoff_iso, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def _utc_now() -> str:
