@@ -30,6 +30,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+from school_email_pipeline.actions import dispatch_callback_action
 from school_email_pipeline.models import PipelineEmail
 from school_email_pipeline.pipeline import process_school_email
 from school_email_pipeline.settings import load_pipeline_settings
@@ -451,11 +452,34 @@ def create_app(settings: Settings) -> FastAPI:
                 status_code=400, detail="Telegram update must be an object"
             )
         pipeline_settings = load_pipeline_settings()
-        handled = log_callback_feedback(
-            payload,
-            EmailStore(pipeline_settings.database_url),
-        )
-        return {"ok": True, "handled": handled}
+        store = EmailStore(pipeline_settings.database_url)
+        handled = log_callback_feedback(payload, store)
+        action_result: dict[str, Any] = {}
+        if handled:
+            callback = payload.get("callback_query") or {}
+            data = str(callback.get("data") or "")
+            parts = data.split(":", 2)
+            email_id_int: int | None = None
+            feedback_type = ""
+            if len(parts) == 3 and parts[0] == "fb":
+                try:
+                    email_id_int = int(parts[1])
+                except ValueError:
+                    email_id_int = None
+                feedback_type = parts[2]
+            message = callback.get("message") if isinstance(callback.get("message"), dict) else {}
+            tg_message_id = message.get("message_id") if isinstance(message, dict) else None
+            if not isinstance(tg_message_id, int):
+                tg_message_id = None
+            if feedback_type and email_id_int is not None:
+                action_result = await dispatch_callback_action(
+                    feedback_type,
+                    email_id_int,
+                    tg_message_id,
+                    pipeline_settings,
+                    store,
+                )
+        return {"ok": True, "handled": handled, "action": action_result}
 
     return app
 
