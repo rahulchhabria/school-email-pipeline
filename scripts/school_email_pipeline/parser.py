@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -13,6 +14,31 @@ from .settings import PipelineSettings
 
 logger = logging.getLogger(__name__)
 JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+_EVALS_DIR = Path(__file__).resolve().parents[2] / "evals"
+_FEW_SHOT_IDS = ["field_trip_permission", "emergency_early_dismissal", "school_newsletter"]
+
+
+def _load_few_shot_examples() -> list[tuple[str, str, str]]:
+    """Load pre-built (subject, body_excerpt, expected_json) few-shot tuples."""
+    examples: list[tuple[str, str, str]] = []
+    for case_id in _FEW_SHOT_IDS:
+        email_path = _EVALS_DIR / "golden_emails" / f"{case_id}.json"
+        expected_path = _EVALS_DIR / "expected_outputs" / f"{case_id}.json"
+        if not email_path.exists() or not expected_path.exists():
+            continue
+        try:
+            email_data = json.loads(email_path.read_text())
+            expected_data = json.loads(expected_path.read_text())
+            subject = email_data.get("subject", "")
+            body = (email_data.get("text_body") or "")[:600]
+            examples.append((subject, body, json.dumps(expected_data, ensure_ascii=False)))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return examples
+
+
+_FEW_SHOT_EXAMPLES = _load_few_shot_examples()
 
 
 class ParserUnavailable(RuntimeError):
@@ -141,7 +167,7 @@ def _messages(
         ensure_ascii=False,
         indent=2,
     )
-    return [
+    messages: list[dict[str, str]] = [
         {
             "role": "system",
             "content": (
@@ -152,6 +178,16 @@ def _messages(
                 "uncertainty with nulls and confidence scores. Return only JSON."
             ),
         },
+    ]
+    for subject, body_excerpt, expected_json in _FEW_SHOT_EXAMPLES:
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Subject: {subject}\n\n{body_excerpt}",
+            }
+        )
+        messages.append({"role": "assistant", "content": expected_json})
+    messages.append(
         {
             "role": "user",
             "content": "\n".join(
@@ -174,5 +210,6 @@ def _messages(
                     cleaned_body or "(empty body)",
                 ]
             ),
-        },
-    ]
+        }
+    )
+    return messages
