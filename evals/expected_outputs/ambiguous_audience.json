@@ -1,21 +1,14 @@
 {
-  "email_type": "announcement",
+  "email_type": "calendar_event",
   "audience": {
     "applies_to_second_grader": true,
     "applies_to_fifth_grader": true,
     "applies_to_whole_school": true,
     "confidence": 0.45
   },
-  "importance": "medium",
+  "importance": "low",
   "parent_action_required": false,
-  "action_items": [
-    {
-      "action": "Sign up for science fair if interested — entry form due March 27",
-      "deadline": "2026-03-27",
-      "applies_to": "unknown",
-      "confidence": 0.50
-    }
-  ],
+  "action_items": [],
   "calendar_items": [
     {
       "title": "Science Fair",
@@ -28,8 +21,8 @@
       "confidence": 0.50
     }
   ],
-  "telegram_summary": "🔬 Science Fair sign-up open! Event Apr 16. Entry forms due Mar 27. Unclear which grades participate — may want to check if your kids are eligible.",
-  "why_it_matters": "The science fair may be open to your kids, but the email doesn't specify which grades can participate. You may want to follow up to confirm eligibility before the March 27 signup deadline.",
+  "telegram_summary": "Science Fair sign-up open! Event Apr 16. Entry forms due Mar 27. Unclear which grades participate — may want to check if your kids are eligible.",
+  "why_it_matters": "The science fair may be open to your kids, but the email doesn't specify which grades. This is optional — no mandatory action required.",
   "confidence": 0.48,
   "needs_human_review": true
 }

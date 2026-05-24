@@ -385,6 +385,7 @@ def load_eval_settings(*, dry_run: bool = False) -> PipelineSettings:
         dry_run=True,
         ash_cwd=Path("/tmp"),
         ash_model=None,
+        senders_config_path=Path(__file__).resolve().parents[1] / "senders.toml",
     )
 
 

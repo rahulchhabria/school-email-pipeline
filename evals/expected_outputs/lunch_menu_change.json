@@ -9,8 +9,19 @@
   "importance": "low",
   "parent_action_required": false,
   "action_items": [],
-  "calendar_items": [],
-  "telegram_summary": "🍽️ Lunch menu change week of May 11: Mon chicken nuggets → fish sticks, Tue chicken teriyaki → beef teriyaki, Wed chicken Caesar → turkey Caesar. Thu-Fri unchanged. Salad bar still available daily.",
+  "calendar_items": [
+    {
+      "title": "Lunch menu change week of May 11",
+      "start": null,
+      "end": null,
+      "date_text": "Week of May 11",
+      "time_text": "",
+      "location": null,
+      "applies_to": "both",
+      "confidence": 0.7
+    }
+  ],
+  "telegram_summary": "Lunch menu change week of May 11: Mon chicken nuggets → fish sticks, Tue chicken teriyaki → beef teriyaki, Wed chicken Caesar → turkey Caesar. Thu-Fri unchanged. Salad bar still available daily.",
   "why_it_matters": "Only relevant if your kids eat school lunch and you care about the specific menu, especially if they have dietary restrictions or are picky about the substituted items.",
   "confidence": 0.95,
   "needs_human_review": false

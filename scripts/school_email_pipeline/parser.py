@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 _EVALS_DIR = Path(__file__).resolve().parents[2] / "evals"
-_FEW_SHOT_IDS = ["field_trip_permission", "emergency_early_dismissal", "school_newsletter"]
+_FEW_SHOT_IDS = [
+    "field_trip_permission",
+    "emergency_early_dismissal",
+    "school_newsletter",
+    "volunteer_opportunity",
+]
 
 
 def _load_few_shot_examples() -> list[tuple[str, str, str]]:
@@ -171,11 +176,29 @@ def _messages(
         {
             "role": "system",
             "content": (
-                "You are a strict school-email parser. The parent has one child in "
-                "2nd grade and one child in 5th grade. Prioritize parent action, "
-                "deadlines, calendar events, grade relevance, and urgent notices. "
-                "Do not invent dates, locations, teachers, or requirements. Preserve "
-                "uncertainty with nulls and confidence scores. Return only JSON."
+                "You are a strict school-email parser for a parent with one child "
+                "in 2nd grade and one child in 5th grade.\n\n"
+                "CRITICAL RULES:\n"
+                "- parent_action_required MUST be true ONLY if the email contains an "
+                "explicit mandatory deadline, a form that MUST be returned, or a "
+                "payment that MUST be sent. Voluntary signups, optional RSVPs, "
+                "fundraising participation, and \"we need volunteers\" are NOT "
+                "parent_action_required — they are announcements.\n"
+                "- action_items should ONLY contain things a parent must do to avoid "
+                "a negative consequence (e.g. child misses a trip, gets marked "
+                "absent). Do NOT create action items for optional opportunities, "
+                "informational notices, or things that are nice-to-know.\n"
+                "- importance should be 'low' for newsletters, general information, "
+                "lunch menus, and volunteer requests. Use 'medium' only when a "
+                "specific grade-relevant event is mentioned. Use 'high' or 'urgent' "
+                "only for mandatory deadlines or emergencies.\n"
+                "- email_type 'sports' is for athletics/PE communications; "
+                "'calendar_event' is for performances, ceremonies, and school events; "
+                "'announcement' is for general information and volunteer opportunities; "
+                "'fundraising' is only when purchasing or donations are the primary ask.\n"
+                "- Do not invent dates, locations, teachers, or requirements.\n"
+                "- Preserve uncertainty with nulls and confidence scores.\n"
+                "- Return only JSON."
             ),
         },
     ]
@@ -199,6 +222,8 @@ def _messages(
                     "",
                     "Context:",
                     "- Parent context: one 2nd grader and one 5th grader.",
+                    "- Only flag parent_action_required if the parent MUST do something (not optional).",
+                    "- Only create action_items for mandatory tasks with consequences for missing them.",
                     f"- Sender: {email.sender or '(unknown)'}",
                     f"- Subject: {email.subject or '(no subject)'}",
                     f"- Received timestamp: {email.received_at or '(unknown)'}",
