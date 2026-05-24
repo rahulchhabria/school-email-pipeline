@@ -6,7 +6,7 @@
 #   "httpx>=0.27.0",
 #   "openai>=1.50.0",
 #   "pydantic>=2.9.0",
-#   "sentry-sdk[fastapi]>=2.0.0",
+#   "sentry-sdk[fastapi]>=2.60.0",
 # ]
 # ///
 """Receive forwarded-email webhooks, parse school emails, and relay Telegram alerts."""
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from school_email_pipeline.actions import dispatch_callback_action
 from school_email_pipeline.digest import format_digest
 from school_email_pipeline.models import PipelineEmail
+from school_email_pipeline.parser import set_conversation_id as set_parser_conversation_id
 from school_email_pipeline.pipeline import process_school_email
 from school_email_pipeline.settings import load_pipeline_settings
 from school_email_pipeline.storage import EmailStore
@@ -383,19 +385,25 @@ def _from_pipeline_email(email: PipelineEmail) -> NormalizedEmail:
 
 async def process_email(email: NormalizedEmail, settings: Settings) -> dict[str, Any]:
     """Deduplicate, parse, route, and optionally deliver a Telegram alert."""
+    conversation_id = _email_conversation_id(email)
     logger.info(
         "processing_email",
         extra={
             "message_id": email.message_id,
+            "sentry.conversation_id": conversation_id,
             "from": email.from_,
             "subject": email.subject,
             "provider": email.provider,
         },
     )
+    _set_sentry_conversation_id(conversation_id)
+    set_parser_conversation_id(conversation_id)
     sentry_sdk.set_tag("email.message_id", email.message_id)
     sentry_sdk.set_tag("email.sender", email.from_)
+    sentry_sdk.set_tag("sentry.conversation_id", conversation_id)
     sentry_sdk.set_context("email", {
         "message_id": email.message_id,
+        "conversation_id": conversation_id,
         "sender": email.from_,
         "subject": email.subject,
     })
@@ -411,6 +419,21 @@ async def process_email(email: NormalizedEmail, settings: Settings) -> dict[str,
         legacy_sender=lambda text: send_telegram(settings, text),
     )
     return result.model_dump()
+
+
+def _email_conversation_id(email: NormalizedEmail) -> str:
+    """Build a stable non-PII conversation ID for one inbound email."""
+    raw_id = email.message_id or f"{email.from_}|{email.subject}|{email.date}"
+    digest = hashlib.sha256(raw_id.encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"school-email-{digest}"
+
+
+def _set_sentry_conversation_id(conversation_id: str) -> None:
+    try:
+        sentry_ai = importlib.import_module("sentry_sdk.ai")
+        sentry_ai.set_conversation_id(conversation_id)
+    except Exception:
+        logger.debug("sentry_conversation_id_skipped", exc_info=True)
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -584,7 +607,13 @@ def _init_sentry() -> None:
             ),
             environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
             release=os.environ.get("SENTRY_RELEASE", "school-email-pipeline@0.1.0"),
-            send_default_pii=False,
+            stream_gen_ai_spans=os.environ.get(
+                "SENTRY_STREAM_GEN_AI_SPANS", "1"
+            ).lower()
+            not in {"0", "false", "no", "off"},
+            send_default_pii=os.environ.get("SENTRY_SEND_DEFAULT_PII", "1").lower()
+            not in {"0", "false", "no", "off"},
+            enable_logs=True,
         )
         logger.info("sentry_initialized")
     except Exception as exc:  # noqa: BLE001

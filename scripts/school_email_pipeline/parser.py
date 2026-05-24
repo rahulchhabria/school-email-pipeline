@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextvars import ContextVar
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,14 @@ from .settings import PipelineSettings
 
 logger = logging.getLogger(__name__)
 JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+try:
+    import sentry_sdk
+    import sentry_sdk.ai as sentry_ai
+    from sentry_sdk.consts import SPANDATA
+except Exception:  # noqa: BLE001
+    sentry_sdk = None
+    sentry_ai = None
+    SPANDATA = None
 
 _EVALS_DIR = Path(__file__).resolve().parents[2] / "evals"
 _FEW_SHOT_IDS = [
@@ -22,6 +32,9 @@ _FEW_SHOT_IDS = [
     "school_newsletter",
     "volunteer_opportunity",
 ]
+_CONVERSATION_ID: ContextVar[str | None] = ContextVar(
+    "school_email_conversation_id", default=None
+)
 
 
 def _load_few_shot_examples() -> list[tuple[str, str, str]]:
@@ -52,6 +65,11 @@ class ParserUnavailable(RuntimeError):
 
 class ParserValidationError(RuntimeError):
     pass
+
+
+def set_conversation_id(conversation_id: str | None) -> None:
+    """Attach a Sentry AI conversation ID to parser spans in this context."""
+    _CONVERSATION_ID.set(conversation_id)
 
 
 def parse_school_email(
@@ -128,11 +146,13 @@ def _parse_with_structured_output(
     if parse_method is None or not hasattr(parse_method, "parse"):
         raise ParserUnavailable("OpenAI structured parse helper is not available")
 
-    completion = parse_method.parse(
-        model=model,
-        messages=messages,
-        response_format=StructuredParseResult,
-    )
+    with _gen_ai_span("openai.beta.chat.completions.parse", model, messages) as span:
+        completion = parse_method.parse(
+            model=model,
+            messages=messages,
+            response_format=StructuredParseResult,
+        )
+        _record_completion_span_data(span, completion)
     parsed = completion.choices[0].message.parsed
     if not isinstance(parsed, StructuredParseResult):
         return StructuredParseResult.model_validate(parsed)
@@ -142,13 +162,78 @@ def _parse_with_structured_output(
 def _parse_with_json_object(
     client: Any, model: str, messages: list[dict[str, str]]
 ) -> StructuredParseResult:
-    completion = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        response_format={"type": "json_object"},
-    )
+    with _gen_ai_span("openai.chat.completions.create", model, messages) as span:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        _record_completion_span_data(span, completion)
     content = completion.choices[0].message.content or ""
     return _validate_json(content)
+
+
+def _gen_ai_span(name: str, model: str, messages: list[dict[str, str]]) -> Any:
+    if sentry_sdk is None or SPANDATA is None:
+        return nullcontext(None)
+    span = sentry_sdk.start_span(op="gen_ai.chat", name=name)
+    span.set_data(SPANDATA.GEN_AI_SYSTEM, "openai")
+    span.set_data(SPANDATA.GEN_AI_PROVIDER_NAME, "openai")
+    span.set_data(SPANDATA.GEN_AI_OPERATION_NAME, "chat")
+    span.set_data(SPANDATA.GEN_AI_REQUEST_MODEL, model)
+    if conversation_id := _CONVERSATION_ID.get():
+        span.set_data(SPANDATA.GEN_AI_CONVERSATION_ID, conversation_id)
+    _set_span_data(span, SPANDATA.GEN_AI_INPUT_MESSAGES, messages)
+    return span
+
+
+def _record_completion_span_data(span: Any, completion: Any) -> None:
+    if span is None or SPANDATA is None:
+        return
+    if response_id := getattr(completion, "id", None):
+        span.set_data(SPANDATA.GEN_AI_RESPONSE_ID, response_id)
+    if response_model := getattr(completion, "model", None):
+        span.set_data(SPANDATA.GEN_AI_RESPONSE_MODEL, response_model)
+
+    usage = getattr(completion, "usage", None)
+    if usage is not None:
+        if input_tokens := getattr(usage, "prompt_tokens", None):
+            span.set_data(SPANDATA.GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
+        if output_tokens := getattr(usage, "completion_tokens", None):
+            span.set_data(SPANDATA.GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
+        if total_tokens := getattr(usage, "total_tokens", None):
+            span.set_data(SPANDATA.GEN_AI_USAGE_TOTAL_TOKENS, total_tokens)
+
+    choices = getattr(completion, "choices", None) or []
+    output_messages: list[dict[str, Any]] = []
+    finish_reasons: list[str] = []
+    for choice in choices:
+        if reason := getattr(choice, "finish_reason", None):
+            finish_reasons.append(reason)
+        message = getattr(choice, "message", None)
+        if message is None:
+            continue
+        content = getattr(message, "content", None)
+        parsed = getattr(message, "parsed", None)
+        if content is None and parsed is not None:
+            try:
+                content = parsed.model_dump_json()
+            except AttributeError:
+                content = json.dumps(parsed, default=str)
+        output_messages.append(
+            {"role": getattr(message, "role", "assistant"), "content": content or ""}
+        )
+    if output_messages:
+        _set_span_data(span, SPANDATA.GEN_AI_OUTPUT_MESSAGES, output_messages)
+    if finish_reasons:
+        _set_span_data(span, SPANDATA.GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+
+
+def _set_span_data(span: Any, key: str, value: Any) -> None:
+    if sentry_ai is not None:
+        sentry_ai.set_data_normalized(span, key, value)
+    else:
+        span.set_data(key, json.dumps(value, default=str))
 
 
 def _validate_json(content: str) -> StructuredParseResult:
