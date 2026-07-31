@@ -102,9 +102,9 @@ def _audience_str(audience: Any) -> str:
         return "?"
     parts = []
     if audience.get("applies_to_second_grader"):
-        parts.append("2nd")
+        parts.append("3rd")
     if audience.get("applies_to_fifth_grader"):
-        parts.append("5th")
+        parts.append("6th")
     if audience.get("applies_to_whole_school"):
         parts.append("whole school")
     return "/".join(parts) if parts else "unknown"

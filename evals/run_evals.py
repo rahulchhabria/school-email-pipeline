@@ -30,7 +30,6 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from school_email_pipeline.cleanup import cleanup_email_body  # noqa: E402
-from school_email_pipeline.entities import extract_entities  # noqa: E402
 from school_email_pipeline.models import PipelineEmail, StructuredParseResult  # noqa: E402
 from school_email_pipeline.parser import parse_school_email, ParserUnavailable  # noqa: E402
 from school_email_pipeline.routing import load_policy, route_email  # noqa: E402
@@ -84,13 +83,12 @@ def run_case(
     cleaned = cleanup_email_body(
         email.text_body, email.html_body, limit=settings.body_char_limit
     )
-    entities = extract_entities(cleaned, settings)
 
     if dry_run:
         parsed = StructuredParseResult.model_validate(expected)
     else:
         try:
-            parsed = parse_school_email(email, cleaned, entities, settings)
+            parsed, _inference_id = parse_school_email(email, cleaned, settings)
         except ParserUnavailable as exc:
             return {
                 "case_id": case_id,
@@ -101,7 +99,7 @@ def run_case(
             return {"case_id": case_id, "status": "parse_error", "error": str(exc)}
 
     policy = load_policy(settings.policy_config_path)
-    routing = route_email(parsed, entities, policy)
+    routing = route_email(parsed, policy)
 
     comparison = compare(parsed, routing, expected)
     comparison["case_id"] = case_id
@@ -369,13 +367,10 @@ def load_eval_settings(*, dry_run: bool = False) -> PipelineSettings:
         openai_api_key="" if dry_run else os.environ.get("OPENAI_API_KEY", "").strip(),
         openai_model=os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip(),
         openai_timeout_seconds=60.0,
-        enable_gliner=False,
-        enable_pioneer=False,
+        openai_base_url="",
         pioneer_api_key="",
-        pioneer_model_id="gliner2-large",
-        pioneer_base_url="https://api.pioneer.ai",
-        pioneer_threshold=0.4,
-        pioneer_timeout_seconds=30.0,
+        pioneer_base_url="",
+        pioneer_timeout_seconds=0.0,
         enable_ash=False,
         ash_base_url="",
         body_char_limit=12000,

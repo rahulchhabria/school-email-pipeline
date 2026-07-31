@@ -46,13 +46,25 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_STATE_PATH = SKILL_DIR / "data" / "state.json"
 DEFAULT_BODY_CHAR_LIMIT = 12000
-DEFAULT_ASH_CWD = Path("/home/rahul/GitHub/ash-main")
+DEFAULT_ASH_CWD = Path("/home/rahul/GitHub/ash")
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 TAG_RE = re.compile(r"<[^>]+>")
 WHITESPACE_RE = re.compile(r"\s+")
+HTML_BLOCK_BREAK_RE = re.compile(
+    r"</?(?:br|div|p|tr|li|h[1-6])\b[^>]*>",
+    re.IGNORECASE,
+)
+FORWARDED_MARKER_RE = re.compile(
+    r"^\s*(?:[-]+\s*Forwarded message\s*[-]+|Begin forwarded message:)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+FORWARDED_HEADER_RE = re.compile(
+    r"^\s*(from|to|cc|bcc|subject|date|sent):\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
 logger = logging.getLogger("email_forward_receiver")
 
 
@@ -150,6 +162,16 @@ def _strip_html(html: str) -> str:
     return WHITESPACE_RE.sub(" ", unescape(text)).strip()
 
 
+def _strip_html_for_header_scan(html: str) -> str:
+    text = HTML_BLOCK_BREAK_RE.sub("\n", html)
+    text = TAG_RE.sub(" ", text)
+    lines = [
+        WHITESPACE_RE.sub(" ", unescape(line)).strip()
+        for line in text.splitlines()
+    ]
+    return "\n".join(line for line in lines if line)
+
+
 def _compact(text: str, *, limit: int) -> str:
     collapsed = WHITESPACE_RE.sub(" ", text).strip()
     if len(collapsed) <= limit:
@@ -162,6 +184,52 @@ def _coalesce_text(text_body: str, html_body: str, *, limit: int) -> str:
         return _compact(text_body, limit=limit)
     if html_body.strip():
         return _compact(_strip_html(html_body), limit=limit)
+    return ""
+
+
+def _extract_forwarded_date(*bodies: str) -> str:
+    for body in bodies:
+        if not body.strip():
+            continue
+        lines = body.splitlines()
+        marker_starts = [
+            body[: match.end()].count("\n")
+            for match in FORWARDED_MARKER_RE.finditer(body)
+        ]
+        starts = marker_starts or [
+            index
+            for index, line in enumerate(lines[:40])
+            if FORWARDED_HEADER_RE.match(line)
+        ]
+        for start in starts:
+            if forwarded_date := _extract_forwarded_date_from_lines(lines, start):
+                return forwarded_date
+    return ""
+
+
+def _extract_forwarded_date_from_lines(lines: list[str], start: int) -> str:
+    seen_headers: set[str] = set()
+    forwarded_date = ""
+    for line in lines[start : start + 30]:
+        match = FORWARDED_HEADER_RE.match(line)
+        if not match:
+            if seen_headers and not line.strip():
+                continue
+            if seen_headers:
+                break
+            continue
+
+        header = match.group(1).lower()
+        value = match.group(2).strip()
+        seen_headers.add(header)
+        if header in {"date", "sent"}:
+            forwarded_date = value
+            continue
+        if forwarded_date and seen_headers & {"from", "subject", "to"}:
+            return forwarded_date
+
+    if forwarded_date and seen_headers & {"from", "subject", "to"}:
+        return forwarded_date
     return ""
 
 
@@ -240,6 +308,12 @@ def normalize_email(
     html_body = _pick(
         payload, "html_body", "html", "body-html", "HtmlBody", "stripped-html"
     )
+    received_date = _pick(payload, "date", "Date", "timestamp")
+    if not received_date:
+        received_date = _extract_forwarded_date(
+            text_body,
+            _strip_html_for_header_scan(html_body) if html_body else "",
+        )
 
     normalized = NormalizedEmail.model_validate(
         {
@@ -247,7 +321,7 @@ def normalize_email(
             "from": _pick(payload, "from", "sender", "From", "FromFull", "from_email"),
             "to": _pick(payload, "to", "recipient", "To", "to_email"),
             "subject": _pick(payload, "subject", "Subject"),
-            "date": _pick(payload, "date", "Date", "timestamp"),
+            "date": received_date,
             "text_body": _coalesce_text(text_body, "", limit=body_char_limit),
             "html_body": _compact(html_body, limit=body_char_limit)
             if html_body
@@ -449,8 +523,7 @@ def create_app(settings: Settings) -> FastAPI:
             "ash_cwd": str(settings.ash_cwd),
             "state_path": str(settings.state_path),
             "database_url": pipeline_settings.database_url,
-            "enable_gliner": pipeline_settings.enable_gliner,
-            "enable_pioneer": pipeline_settings.enable_pioneer,
+            "openai_model": pipeline_settings.openai_model,
             "enable_ash": pipeline_settings.enable_ash,
         }
 

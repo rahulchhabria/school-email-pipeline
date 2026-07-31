@@ -10,15 +10,15 @@
   "parent_action_required": true,
   "action_items": [
     {
-      "action": "Help 5th grader sell cookie dough — goal of 10 tubs per student to fund science camp",
+      "action": "Help 6th grader sell cookie dough — goal of 10 tubs per student to fund science camp",
       "deadline": "2026-10-15",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.95
     },
     {
-      "action": "Return order forms and money (checks to Lincoln Elementary 5th Grade Fund)",
+      "action": "Return order forms and money (checks to Lincoln Elementary 6th Grade Fund)",
       "deadline": "2026-10-15",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.97
     }
   ],
@@ -30,12 +30,12 @@
       "date_text": "November 7, 2026",
       "time_text": "TBD",
       "location": "Lincoln Elementary",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.92
     }
   ],
-  "telegram_summary": "🍪 FUNDRAISER: 5th grade cookie dough fundraiser now thru Oct 15. $16/tub, goal of 10 tubs per student. Proceeds fund promotion ceremony & science camp. Order forms + money due Oct 15.",
-  "why_it_matters": "This fundraiser directly funds your 5th grader's end-of-year activities including science camp. Participating helps ensure these activities are fully funded.",
+  "telegram_summary": "🍪 FUNDRAISER: 6th grade cookie dough fundraiser now thru Oct 15. $16/tub, goal of 10 tubs per student. Proceeds fund promotion ceremony & science camp. Order forms + money due Oct 15.",
+  "why_it_matters": "This fundraiser directly funds your 6th grader's end-of-year activities including science camp. Participating helps ensure these activities are fully funded.",
   "confidence": 0.94,
   "needs_human_review": false
 }

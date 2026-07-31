@@ -12,31 +12,31 @@
     {
       "action": "Complete USAG Athlete Registration Form in parent portal",
       "deadline": "2026-05-10",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.96
     },
     {
       "action": "Complete Medical Release & Emergency Contact Update in parent portal",
       "deadline": "2026-05-10",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.96
     },
     {
       "action": "Sign and submit Team Contract (practice attendance, meet commitments, code of conduct)",
       "deadline": "2026-05-10",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.96
     },
     {
       "action": "Complete Payment Authorization for meet fees (estimated $200-400/season)",
       "deadline": "2026-05-10",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.96
     },
     {
       "action": "Pay annual team fee of $350",
       "deadline": "2026-05-10",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.95
     }
   ],
@@ -48,7 +48,7 @@
       "date_text": "May 17-18, 2026",
       "time_text": "TBD",
       "location": "SFG Main Gym, 2500 Tanseo Street, San Francisco",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.94
     },
     {
@@ -58,12 +58,12 @@
       "date_text": "June 7, 2026",
       "time_text": "TBD",
       "location": "Sacramento, CA",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.93
     }
   ],
   "telegram_summary": "🤸 ACTION REQUIRED: SF Gymnastics team forms due May 10 — USAG registration, medical release, team contract, and meet fee authorization. Also $350 annual team fee. Mandatory intrasquad meet May 17-18.",
-  "why_it_matters": "Your 5th grader cannot participate in team practices or meets without completing these required forms and paying fees by the May 10 deadline.",
+  "why_it_matters": "Your 6th grader cannot participate in team practices or meets without completing these required forms and paying fees by the May 10 deadline.",
   "confidence": 0.93,
   "needs_human_review": false
 }

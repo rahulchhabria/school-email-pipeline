@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from .models import ExtractedEntity, RouteAction, RoutingDecision, StructuredParseResult
+from .models import RouteAction, RoutingDecision, StructuredParseResult
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ def load_policy(path: Path) -> RoutingPolicy:
         ),
         daily_digest_importance=set(data.get("daily_digest_importance", ["low"])),
         relevant_audiences=set(
-            data.get("relevant_audiences", ["2nd grader", "5th grader", "both"])
+            data.get("relevant_audiences", ["3rd grader", "6th grader", "both"])
         ),
         telegram_for_human_review=bool(data.get("telegram_for_human_review", True)),
     )
@@ -46,7 +46,6 @@ def load_policy(path: Path) -> RoutingPolicy:
 
 def route_email(
     parsed: StructuredParseResult,
-    entities: list[ExtractedEntity],
     policy: RoutingPolicy,
     *,
     now: datetime | None = None,
@@ -60,7 +59,19 @@ def route_email(
         or parsed.audience.applies_to_whole_school
     )
 
-    if parsed.importance == "ignore" or not relevant:
+    if parsed.confidence < policy.parser_confidence_review_threshold:
+        actions.append("needs_human_review")
+        reasons.append("parser confidence below threshold")
+    if parsed.audience.confidence < policy.audience_confidence_review_threshold:
+        actions.append("needs_human_review")
+        reasons.append("audience confidence below threshold")
+    if parsed.needs_human_review:
+        actions.append("needs_human_review")
+        reasons.append("parser requested human review")
+
+    if parsed.importance == "ignore" or (
+        not relevant and "needs_human_review" not in actions
+    ):
         actions.append("ignore")
         reasons.append(
             "importance is ignore"
@@ -73,17 +84,7 @@ def route_email(
             relevance=relevance,
             processing_status="ignored",
         )
-
-    if parsed.confidence < policy.parser_confidence_review_threshold:
-        actions.append("needs_human_review")
-        reasons.append("parser confidence below threshold")
-    if parsed.audience.confidence < policy.audience_confidence_review_threshold:
-        actions.append("needs_human_review")
-        reasons.append("audience confidence below threshold")
-    if parsed.needs_human_review:
-        actions.append("needs_human_review")
-        reasons.append("parser requested human review")
-    if _important_date_unresolved(parsed, entities):
+    if _important_date_unresolved(parsed):
         actions.append("needs_human_review")
         reasons.append("important date exists but was not normalized")
     if _ambiguous_action(parsed):
@@ -140,9 +141,9 @@ def _relevance(parsed: StructuredParseResult) -> str:
     if second and fifth:
         return "both"
     if second:
-        return "2nd grader"
+        return "3rd grader"
     if fifth:
-        return "5th grader"
+        return "6th grader"
     if parsed.audience.applies_to_whole_school:
         return "both"
     return "unknown"
@@ -168,20 +169,18 @@ def _parse_date(value: str | None) -> date | None:
         return None
 
 
-def _important_date_unresolved(
-    parsed: StructuredParseResult, entities: list[ExtractedEntity]
-) -> bool:
-    has_date_entity = any(
-        entity.label in {"date", "deadline", "calendar item"} for entity in entities
+def _important_date_unresolved(parsed: StructuredParseResult) -> bool:
+    if not (parsed.parent_action_required or parsed.calendar_items):
+        return False
+    has_action_deadline = any(item.deadline for item in parsed.action_items)
+    has_calendar_date = any(
+        (item.start or item.date_text) for item in parsed.calendar_items
     )
-    has_normalized = any(item.deadline for item in parsed.action_items) or any(
-        item.start for item in parsed.calendar_items
-    )
-    return (
-        has_date_entity
-        and not has_normalized
-        and (parsed.parent_action_required or bool(parsed.calendar_items))
-    )
+    if parsed.parent_action_required and not has_action_deadline:
+        return True
+    if parsed.calendar_items and not has_calendar_date:
+        return True
+    return False
 
 
 def _ambiguous_action(parsed: StructuredParseResult) -> bool:

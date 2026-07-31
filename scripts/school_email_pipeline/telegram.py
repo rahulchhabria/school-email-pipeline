@@ -4,7 +4,11 @@ from typing import Any
 
 import httpx
 
-from .models import FeedbackEvent, RoutingDecision, StructuredParseResult
+from .models import (
+    FeedbackEvent,
+    RoutingDecision,
+    StructuredParseResult,
+)
 from .settings import PipelineSettings
 from .storage import EmailStore
 
@@ -18,20 +22,30 @@ BUTTONS = [
     ("Show original", "show_original"),
 ]
 
+FEEDBACK_VERDICTS: dict[str, str] = {
+    "useful": "positive",
+    "not_useful": "negative",
+    "wrong_kid": "negative",
+    "too_noisy": "negative",
+}
+
 
 def format_telegram_message(
     subject: str,
     parsed: StructuredParseResult,
     routing: RoutingDecision,
+    entities: object | None = None,
 ) -> str:
+    del entities  # legacy positional argument; entities are no longer extracted
     action = _action_text(parsed)
-    when = _when_text(parsed)
+    date_text, time_text = _date_time_text(parsed)
     return "\n".join(
         [
             f"School: {_short(parsed.calendar_items[0].title if parsed.calendar_items else subject, 80)}",
             f"Relevant to: {routing.relevance}",
             f"Action: {action}",
-            f"When: {when}",
+            f"Date: {date_text}",
+            f"Time: {time_text}",
             f"Summary: {_short(parsed.telegram_summary, 260)}",
             f"Why it matters: {_short(parsed.why_it_matters, 180)}",
         ]
@@ -84,15 +98,20 @@ def log_callback_feedback(update: dict[str, Any], store: EmailStore) -> bool:
         callback.get("message") if isinstance(callback.get("message"), dict) else {}
     )
     telegram_message_id = message.get("message_id")
+    feedback_type = parts[2]
+    verdict = FEEDBACK_VERDICTS.get(feedback_type)
+    parsed_snapshot = store.get_email_parsed_result(email_id) if verdict else None
     store.log_feedback(
         FeedbackEvent(
             email_id=email_id,
             telegram_message_id=telegram_message_id
             if isinstance(telegram_message_id, int)
             else None,
-            feedback_type=parts[2],
+            feedback_type=feedback_type,
             payload=callback,
-        )
+        ),
+        verdict=verdict,
+        parsed_snapshot=parsed_snapshot,
     )
     return True
 
@@ -115,17 +134,22 @@ def _action_text(parsed: StructuredParseResult) -> str:
     return "; ".join(_short(item.action, 100) for item in parsed.action_items[:3])
 
 
-def _when_text(parsed: StructuredParseResult) -> str:
+def _date_time_text(parsed: StructuredParseResult) -> tuple[str, str]:
     for item in parsed.action_items:
         if item.deadline:
-            return item.deadline
+            return item.deadline, "none"
     for item in parsed.calendar_items:
-        when = " ".join(part for part in (item.start, item.time_text) if part).strip()
-        if when:
-            return when
         if item.date_text:
-            return item.date_text
-    return "none"
+            return item.date_text, _short(item.time_text or "", 80)
+        if item.start:
+            start = _short(item.start, 80)
+            if "T" in start:
+                date_part, time_part = start.split("T", 1)
+                return date_part, _short(time_part, 80)
+            return start, _short(item.time_text or "", 80)
+        if item.time_text:
+            return "none", _short(item.time_text, 80)
+    return "none", "none"
 
 
 def _short(value: str, limit: int) -> str:

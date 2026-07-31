@@ -10,32 +10,32 @@
   "parent_action_required": false,
   "action_items": [
     {
-      "action": "Prepare outfit: white collared shirt + dark pants/skirt + dress shoes for 2nd grader",
+      "action": "Prepare outfit: white collared shirt + dark pants/skirt + dress shoes for 3rd grader",
       "deadline": "2026-12-18",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.92
     },
     {
-      "action": "Drop off 2nd grader in music room by 5:30 PM on performance night",
+      "action": "Drop off 3rd grader in music room by 5:30 PM on performance night",
       "deadline": "2026-12-18",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.95
     }
   ],
   "calendar_items": [
     {
-      "title": "2nd Grade Winter Performance",
+      "title": "3rd Grade Winter Performance",
       "start": "18:00",
       "end": null,
       "date_text": "Thursday, December 18, 2026",
       "time_text": "6:00 PM (arrive 5:30 PM)",
       "location": "Lincoln Elementary Auditorium",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.98
     }
   ],
-  "telegram_summary": "🎵 2nd Grade Winter Performance: Thu Dec 18 at 6pm in auditorium. Kids arrive 5:30pm. Dress: white shirt + dark pants. Cookies & cocoa after!",
-  "why_it_matters": "Your 2nd grader is performing — you'll want to attend. Note the dress code requirement (white shirt, dark pants) and early arrival time of 5:30 PM.",
+  "telegram_summary": "🎵 3rd Grade Winter Performance: Thu Dec 18 at 6pm in auditorium. Kids arrive 5:30pm. Dress: white shirt + dark pants. Cookies & cocoa after!",
+  "why_it_matters": "Your 3rd grader is performing — you'll want to attend. Note the dress code requirement (white shirt, dark pants) and early arrival time of 5:30 PM.",
   "confidence": 0.97,
   "needs_human_review": false
 }

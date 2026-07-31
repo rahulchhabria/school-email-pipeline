@@ -34,7 +34,7 @@ EmailType = Literal[
     "other",
 ]
 Importance = Literal["ignore", "low", "medium", "high", "urgent"]
-AppliesTo = Literal["2nd grader", "5th grader", "both", "unknown"]
+AppliesTo = Literal["3rd grader", "6th grader", "both", "unknown"]
 RouteAction = Literal[
     "send_immediate",
     "add_to_daily_digest",
@@ -67,8 +67,8 @@ class ExtractedEntity(BaseModel):
 
 
 class Audience(BaseModel):
-    applies_to_second_grader: bool
-    applies_to_fifth_grader: bool
+    applies_to_second_grader: bool = Field(title="Applies To Third Grader")
+    applies_to_fifth_grader: bool = Field(title="Applies To Sixth Grader")
     applies_to_whole_school: bool
     confidence: float = Field(ge=0.0, le=1.0)
 

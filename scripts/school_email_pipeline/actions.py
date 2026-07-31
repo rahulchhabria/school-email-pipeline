@@ -25,13 +25,6 @@ ACK_LABELS: dict[str, str] = {
     "add_calendar": "Adding to calendar",
 }
 
-FEEDBACK_VERDICTS: dict[str, str] = {
-    "useful": "positive",
-    "not_useful": "negative",
-    "wrong_kid": "negative",
-    "too_noisy": "negative",
-}
-
 
 def _bot_url(settings: PipelineSettings, method: str) -> str:
     return f"https://api.telegram.org/bot{settings.telegram_bot_token}/{method}"
@@ -240,20 +233,6 @@ async def dispatch_callback_action(
                 f"{label} for email #{email_id}.",
                 reply_to_message_id=telegram_message_id,
             )
-            verdict = FEEDBACK_VERDICTS.get(feedback_type)
-            if verdict and email_id is not None:
-                parsed_snapshot = store.get_email_parsed_result(email_id)
-                from .models import FeedbackEvent as _FBEv
-                store.log_feedback(
-                    _FBEv(
-                        email_id=email_id,
-                        telegram_message_id=telegram_message_id,
-                        feedback_type=feedback_type,
-                        payload={"ack": label},
-                    ),
-                    verdict=verdict,
-                    parsed_snapshot=parsed_snapshot,
-                )
             result["action"] = "ack"
         else:
             logger.info(

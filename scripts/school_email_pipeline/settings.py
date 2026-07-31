@@ -9,7 +9,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1]
 SKILL_DIR = SCRIPT_DIR.parent
 DEFAULT_DB_PATH = SKILL_DIR / "data" / "school_email_pipeline.sqlite3"
 DEFAULT_POLICY_PATH = SKILL_DIR / "policy.default.json"
-DEFAULT_ASH_CWD = Path("/home/rahul/GitHub/ash-main")
+DEFAULT_ASH_CWD = Path("/home/rahul/GitHub/ash")
 
 
 def env_bool(name: str, *, default: bool = False) -> bool:
@@ -36,12 +36,9 @@ class PipelineSettings:
     openai_api_key: str
     openai_model: str
     openai_timeout_seconds: float
-    enable_gliner: bool
-    enable_pioneer: bool
+    openai_base_url: str
     pioneer_api_key: str
-    pioneer_model_id: str
     pioneer_base_url: str
-    pioneer_threshold: float
     pioneer_timeout_seconds: float
     enable_ash: bool
     ash_base_url: str
@@ -53,6 +50,15 @@ class PipelineSettings:
     ash_cwd: Path
     ash_model: str | None
     senders_config_path: Path
+    # Deprecated but kept for backward compatibility with older tests / configs.
+    # The live pipeline ignores these.
+    enable_gliner: bool = False
+    enable_pioneer: bool = False
+    pioneer_project_id: str = ""
+    pioneer_model_id: str = ""
+    pioneer_gliner_model_id: str = ""
+    pioneer_gliner_fallback_model_id: str = ""
+    pioneer_threshold: float = 0.4
 
 
 def load_pipeline_settings() -> PipelineSettings:
@@ -62,25 +68,15 @@ def load_pipeline_settings() -> PipelineSettings:
             os.environ.get("SCHOOL_EMAIL_POLICY_PATH", DEFAULT_POLICY_PATH)
         ),
         openai_api_key=os.environ.get("OPENAI_API_KEY", "").strip(),
-        openai_model=os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip(),
+        openai_model=os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip()
+        or "gpt-4.1-mini",
         openai_timeout_seconds=float(
             os.environ.get("OPENAI_TIMEOUT_SECONDS", "60").strip() or "60"
         ),
-        enable_gliner=env_bool("ENABLE_GLINER"),
-        enable_pioneer=env_bool("ENABLE_PIONEER"),
-        pioneer_api_key=os.environ.get("PIONEER_API_KEY", "").strip(),
-        pioneer_model_id=os.environ.get("PIONEER_MODEL_ID", "gliner2-large").strip()
-        or "gliner2-large",
-        pioneer_base_url=os.environ.get(
-            "PIONEER_BASE_URL", "https://api.pioneer.ai"
-        ).strip()
-        or "https://api.pioneer.ai",
-        pioneer_threshold=float(
-            os.environ.get("PIONEER_THRESHOLD", "0.4").strip() or "0.4"
-        ),
-        pioneer_timeout_seconds=float(
-            os.environ.get("PIONEER_TIMEOUT_SECONDS", "30").strip() or "30"
-        ),
+        openai_base_url="",
+        pioneer_api_key="",
+        pioneer_base_url="",
+        pioneer_timeout_seconds=0.0,
         enable_ash=env_bool("ENABLE_ASH"),
         ash_base_url=os.environ.get("ASH_BASE_URL", "").strip(),
         body_char_limit=max(
@@ -95,4 +91,11 @@ def load_pipeline_settings() -> PipelineSettings:
         senders_config_path=Path(
             os.environ.get("SENDERS_CONFIG_PATH", SKILL_DIR / "senders.toml")
         ),
+        enable_gliner=False,
+        enable_pioneer=False,
+        pioneer_project_id="",
+        pioneer_model_id="",
+        pioneer_gliner_model_id="",
+        pioneer_gliner_fallback_model_id="",
+        pioneer_threshold=0.0,
     )

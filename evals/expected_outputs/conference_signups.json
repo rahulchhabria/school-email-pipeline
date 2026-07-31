@@ -10,32 +10,32 @@
   "parent_action_required": true,
   "action_items": [
     {
-      "action": "Sign up for 2nd grade parent-teacher conference with Mrs. Chen",
+      "action": "Sign up for 3rd grade parent-teacher conference with Mrs. Chen",
       "deadline": "2026-11-01",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.97
     },
     {
       "action": "Note: minimum days all week (dismissal at 12:30 PM) for conference week",
       "deadline": null,
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.95
     }
   ],
   "calendar_items": [
     {
-      "title": "2nd Grade Parent-Teacher Conference Week",
+      "title": "3rd Grade Parent-Teacher Conference Week",
       "start": null,
       "end": null,
       "date_text": "November 4-8, 2026",
       "time_text": "Varies by signup (Mon-Thu 1-4pm, Wed evening 1-7pm, Fri 8am-12pm)",
       "location": "Lincoln Elementary, Mrs. Chen's classroom",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.96
     }
   ],
-  "telegram_summary": "📋 SIGN UP: 2nd grade parent-teacher conferences Nov 4-8 with Mrs. Chen. Register online by Nov 1. 20-min slots available. Note: minimum days all week (12:30 dismissal).",
-  "why_it_matters": "You need to sign up for a conference slot to discuss your 2nd grader's progress. The deadline is November 1 and popular times fill up. Also note the minimum day schedule affects pickup.",
+  "telegram_summary": "📋 SIGN UP: 3rd grade parent-teacher conferences Nov 4-8 with Mrs. Chen. Register online by Nov 1. 20-min slots available. Note: minimum days all week (12:30 dismissal).",
+  "why_it_matters": "You need to sign up for a conference slot to discuss your 3rd grader's progress. The deadline is November 1 and popular times fill up. Also note the minimum day schedule affects pickup.",
   "confidence": 0.96,
   "needs_human_review": false
 }

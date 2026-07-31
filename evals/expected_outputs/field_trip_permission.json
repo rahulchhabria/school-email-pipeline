@@ -12,36 +12,36 @@
     {
       "action": "Sign and return permission slip for Discovery Science Museum field trip",
       "deadline": "2026-05-05",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.97
     },
     {
       "action": "Send $15.00 payment for field trip (cash or check to Lincoln Elementary)",
       "deadline": "2026-05-05",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.97
     },
     {
       "action": "Indicate if child needs school sack lunch on permission slip",
       "deadline": "2026-05-05",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.90
     }
   ],
   "calendar_items": [
     {
-      "title": "2nd Grade Field Trip to Discovery Science Museum",
+      "title": "3rd Grade Field Trip to Discovery Science Museum",
       "start": "09:00",
       "end": "14:30",
       "date_text": "Wednesday, May 20, 2026",
       "time_text": "9:00 AM - 2:30 PM",
       "location": "Discovery Science Museum, 201 W Market St, San Jose, CA 95110",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.98
     }
   ],
-  "telegram_summary": "📋 ACTION REQUIRED: 2nd grade field trip to Discovery Science Museum on May 20. Permission slip + $15 due by THIS FRIDAY May 5. Indicate lunch needs on form.",
-  "why_it_matters": "Your 2nd grader cannot attend the field trip without a signed permission slip and payment. The deadline is this Friday, so immediate action is needed.",
+  "telegram_summary": "📋 ACTION REQUIRED: 3rd grade field trip to Discovery Science Museum on May 20. Permission slip + $15 due by THIS FRIDAY May 5. Indicate lunch needs on form.",
+  "why_it_matters": "Your 3rd grader cannot attend the field trip without a signed permission slip and payment. The deadline is this Friday, so immediate action is needed.",
   "confidence": 0.97,
   "needs_human_review": false
 }

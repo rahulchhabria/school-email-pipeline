@@ -208,13 +208,13 @@ class EmailStore:
         *,
         verdict: str | None = None,
         parsed_snapshot: StructuredParseResult | None = None,
-    ) -> None:
+    ) -> int | None:
         created_at = event.created_at.isoformat() if event.created_at else _utc_now()
         parsed_snapshot_json = (
             parsed_snapshot.model_dump_json() if parsed_snapshot else None
         )
         with self._connect() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO feedback (
                     email_id, telegram_message_id, feedback_type,
@@ -232,6 +232,7 @@ class EmailStore:
                     created_at,
                 ),
             )
+            feedback_id = int(cursor.lastrowid) if cursor.lastrowid else None
             if event.email_id is not None:
                 rows = conn.execute(
                     "SELECT feedback_type, payload_json, created_at FROM feedback WHERE email_id = ?",
@@ -249,6 +250,7 @@ class EmailStore:
                     "UPDATE emails SET feedback_json = ?, updated_at = ? WHERE id = ?",
                     (_json(feedback), _utc_now(), event.email_id),
                 )
+        return feedback_id
 
     def get_pending_feedback(
         self, *, limit: int = 100

@@ -31,28 +31,28 @@
       "confidence": 0.90
     },
     {
-      "title": "5th Grade Track & Field Day",
+      "title": "6th Grade Track & Field Day",
       "start": null,
       "end": null,
       "date_text": "May 30, 2026",
       "time_text": "TBD",
       "location": "Lincoln Elementary School Field",
-      "applies_to": "5th grader",
+      "applies_to": "6th grader",
       "confidence": 0.92
     },
     {
-      "title": "2nd Grade Art Show",
+      "title": "3rd Grade Art Show",
       "start": "17:00",
       "end": null,
       "date_text": "June 6, 2026",
       "time_text": "5:00 PM",
       "location": "Lincoln Elementary",
-      "applies_to": "2nd grader",
+      "applies_to": "3rd grader",
       "confidence": 0.92
     }
   ],
-  "telegram_summary": "📰 Lincoln Newsletter: PTA mtg Tue 5/20, Restaurant Night Thu 5/22 at Round Table Pizza, no school Mon 5/26 (Memorial Day), 5th grade track day 5/30, 2nd grade art show 6/6.",
-  "why_it_matters": "General school updates. A few dates may be relevant — PTA meeting and restaurant night fundraiser affect both kids; track day applies to 5th grader; art show applies to 2nd grader.",
+  "telegram_summary": "📰 Lincoln Newsletter: PTA mtg Tue 5/20, Restaurant Night Thu 5/22 at Round Table Pizza, no school Mon 5/26 (Memorial Day), 6th grade track day 5/30, 3rd grade art show 6/6.",
+  "why_it_matters": "General school updates. A few dates may be relevant — PTA meeting and restaurant night fundraiser affect both kids; track day applies to 6th grader; art show applies to 3rd grader.",
   "confidence": 0.96,
   "needs_human_review": false
 }

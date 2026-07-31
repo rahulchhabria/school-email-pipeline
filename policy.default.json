@@ -6,6 +6,6 @@
   "audience_confidence_review_threshold": 0.7,
   "daily_digest_email_types": ["newsletter"],
   "daily_digest_importance": ["low"],
-  "relevant_audiences": ["2nd grader", "5th grader", "both"],
+  "relevant_audiences": ["3rd grader", "6th grader", "both"],
   "telegram_for_human_review": true
 }

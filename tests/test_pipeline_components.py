@@ -12,29 +12,30 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from school_email_pipeline.cleanup import cleanup_email_body  # noqa: E402
 from school_email_pipeline.entities import extract_entities  # noqa: E402
 from school_email_pipeline.models import (  # noqa: E402
+    ExtractedEntity,
     FeedbackEvent,
+    PipelineEmail,
     StructuredParseResult,
 )
-from school_email_pipeline.parser import _validate_json  # noqa: E402
+from school_email_pipeline.parser import _completion_id, _validate_json  # noqa: E402
+from school_email_pipeline.pipeline import _is_google_calendar_notification  # noqa: E402
 from school_email_pipeline.routing import RoutingPolicy, route_email  # noqa: E402
 from school_email_pipeline.settings import PipelineSettings  # noqa: E402
 from school_email_pipeline.storage import EmailStore  # noqa: E402
 from school_email_pipeline.telegram import format_telegram_message  # noqa: E402
+from email_webhook_server import normalize_email  # noqa: E402
 
 
-def _settings(tmp_path: Path, *, enable_gliner: bool = False) -> PipelineSettings:
+def _settings(tmp_path: Path) -> PipelineSettings:
     return PipelineSettings(
         database_url=f"sqlite:///{tmp_path / 'emails.sqlite3'}",
         policy_config_path=tmp_path / "policy.json",
         openai_api_key="",
         openai_model="test",
         openai_timeout_seconds=1,
-        enable_gliner=enable_gliner,
-        enable_pioneer=False,
+        openai_base_url="",
         pioneer_api_key="",
-        pioneer_model_id="gliner2-large",
-        pioneer_base_url="https://api.pioneer.ai",
-        pioneer_threshold=0.4,
+        pioneer_base_url="",
         pioneer_timeout_seconds=30.0,
         enable_ash=False,
         ash_base_url="",
@@ -46,6 +47,20 @@ def _settings(tmp_path: Path, *, enable_gliner: bool = False) -> PipelineSetting
         ash_cwd=tmp_path,
         ash_model=None,
         senders_config_path=tmp_path / "senders.toml",
+    )
+
+
+def _policy() -> RoutingPolicy:
+    return RoutingPolicy(
+        immediate_importance={"high", "urgent"},
+        deadline_within_days=7,
+        high_calendar_confidence=0.8,
+        parser_confidence_review_threshold=0.7,
+        audience_confidence_review_threshold=0.7,
+        daily_digest_email_types={"newsletter"},
+        daily_digest_importance={"low"},
+        relevant_audiences={"3rd grader", "6th grader", "both"},
+        telegram_for_human_review=True,
     )
 
 
@@ -64,13 +79,13 @@ def _parsed(**overrides: object) -> StructuredParseResult:
             {
                 "action": "Return the field trip form",
                 "deadline": "2026-05-25",
-                "applies_to": "2nd grader",
+                "applies_to": "3rd grader",
                 "confidence": 0.9,
             }
         ],
         "calendar_items": [],
         "telegram_summary": "Field trip form is due soon.",
-        "why_it_matters": "This affects the 2nd grader's field trip.",
+        "why_it_matters": "This affects the 3rd grader's field trip.",
         "confidence": 0.9,
         "needs_human_review": False,
     }
@@ -104,16 +119,99 @@ def test_cleanup_html_email_body() -> None:
     assert "script" not in body
 
 
-def test_gliner_failure_falls_back(monkeypatch, tmp_path: Path) -> None:
-    def fail() -> object:
-        raise RuntimeError("missing model")
+def test_extract_entities_is_disabled(tmp_path: Path) -> None:
+    """GLiNER extraction is permanently disabled in the OpenAI-only pipeline."""
+    assert extract_entities("anything at all", _settings(tmp_path)) == []
 
-    monkeypatch.setattr("school_email_pipeline.entities._load_gliner_model", fail)
 
-    assert (
-        extract_entities("field trip Friday", _settings(tmp_path, enable_gliner=True))
-        == []
+def test_normalize_email_uses_forwarded_text_date_when_payload_date_missing() -> None:
+    email = normalize_email(
+        "json",
+        {
+            "message_id": "<outer@local>",
+            "from": "Rahul <rahul@example.com>",
+            "to": "school@local",
+            "subject": "Fwd: Field trip",
+            "text": "\n".join(
+                [
+                    "FYI",
+                    "",
+                    "---------- Forwarded message ---------",
+                    "From: School Office <office@school.edu>",
+                    "Date: Fri, May 29, 2026 at 8:15 AM",
+                    "Subject: Field trip",
+                    "To: Parents <parents@school.edu>",
+                    "",
+                    "Please return the form.",
+                ]
+            ),
+        },
+        body_char_limit=2000,
     )
+
+    assert email.date == "Fri, May 29, 2026 at 8:15 AM"
+
+
+def test_normalize_email_uses_forwarded_html_sent_date_when_payload_date_missing() -> None:
+    email = normalize_email(
+        "json",
+        {
+            "message_id": "<outer-html@local>",
+            "from": "Rahul <rahul@example.com>",
+            "subject": "Fwd: Reminder",
+            "html": """
+                <div>Forwarding this</div>
+                <div>Begin forwarded message:</div>
+                <div>From: School Office &lt;office@school.edu&gt;</div>
+                <div>Sent: Friday, May 29, 2026 8:15 AM</div>
+                <div>Subject: Reminder</div>
+                <p>Please return the form.</p>
+            """,
+        },
+        body_char_limit=2000,
+    )
+
+    assert email.date == "Friday, May 29, 2026 8:15 AM"
+
+
+def test_google_calendar_notification_detects_rewritten_sender_invite() -> None:
+    email = PipelineEmail(
+        message_id="<calendar-00b348b9-5fc3-4b55-9bfe-7fde3f42cd9e@google.com>",
+        sender="Jocelyn Chhabria <jocelyn.kiyuna@gmail.com>",
+        recipient="Rahul Chhabria <rahul.chhabria@gmail.com>",
+        subject=(
+            "Updated invitation: Coastal Camp - Mari Paid @ "
+            "Mon Jul 20 - Fri Jul 24, 2026 (Rahul Chhabria)"
+        ),
+        text_body=(
+            "Invitation from Google Calendar: https://calendar.google.com/calendar/\n"
+            "You are receiving this email because you are subscribed to calendar "
+            "notifications."
+        ),
+    )
+
+    assert _is_google_calendar_notification(email) is True
+
+
+def test_google_calendar_notification_detects_calendar_notification_sender() -> None:
+    email = PipelineEmail(
+        message_id="<some-message@google.com>",
+        sender="Google Calendar <calendar-notification@google.com>",
+        subject="Canceled event: Soccer",
+    )
+
+    assert _is_google_calendar_notification(email) is True
+
+
+def test_google_calendar_notification_does_not_match_school_calendar_email() -> None:
+    email = PipelineEmail(
+        message_id="<school-calendar@sfday.org>",
+        sender="School Office <office@sfday.org>",
+        subject="Invitation: Closing Assembly",
+        text_body="Please join the closing assembly at school.",
+    )
+
+    assert _is_google_calendar_notification(email) is False
 
 
 def test_openai_json_validation_accepts_strict_schema() -> None:
@@ -123,53 +221,122 @@ def test_openai_json_validation_accepts_strict_schema() -> None:
     assert parsed.audience.applies_to_second_grader is True
 
 
-def test_routing_policy_immediate_for_action_deadline() -> None:
-    policy = RoutingPolicy(
-        immediate_importance={"high", "urgent"},
-        deadline_within_days=7,
-        high_calendar_confidence=0.8,
-        parser_confidence_review_threshold=0.7,
-        audience_confidence_review_threshold=0.7,
-        daily_digest_email_types={"newsletter"},
-        daily_digest_importance={"low"},
-        relevant_audiences={"2nd grader", "5th grader", "both"},
-        telegram_for_human_review=True,
-    )
+def test_completion_id_uses_openai_completion_id() -> None:
+    class Completion:
+        id = "chatcmpl-123"
 
+    assert _completion_id(Completion()) == "chatcmpl-123"
+
+
+def test_routing_policy_immediate_for_action_deadline() -> None:
     decision = route_email(
         _parsed(),
-        [],
-        policy,
+        _policy(),
         now=datetime(2026, 5, 23, tzinfo=UTC),
     )
 
     assert "send_immediate" in decision.actions
-    assert decision.relevance == "2nd grader"
+    assert decision.relevance == "3rd grader"
+
+
+def test_routing_sends_uncertain_audience_to_human_review() -> None:
+    parsed = _parsed(
+        email_type="calendar_event",
+        audience={
+            "applies_to_second_grader": False,
+            "applies_to_fifth_grader": False,
+            "applies_to_whole_school": False,
+            "confidence": 0.45,
+        },
+        parent_action_required=False,
+        action_items=[],
+        calendar_items=[
+            {
+                "title": "Field trip",
+                "start": "08:45",
+                "end": "14:30",
+                "date_text": "Wednesday, April 29",
+                "time_text": "8:45 AM - 2:30 PM",
+                "location": "Tennessee Valley",
+                "applies_to": "unknown",
+                "confidence": 0.78,
+            }
+        ],
+        confidence=0.72,
+        needs_human_review=True,
+    )
+
+    decision = route_email(parsed, _policy())
+
+    assert "ignore" not in decision.actions
+    assert "needs_human_review" in decision.actions
+    assert decision.send_telegram_now is True
+    assert decision.processing_status == "telegram_ready"
+
+
+def test_routing_flags_action_without_deadline_for_review() -> None:
+    parsed = _parsed(
+        action_items=[
+            {
+                "action": "Return the field trip form",
+                "deadline": None,
+                "applies_to": "3rd grader",
+                "confidence": 0.9,
+            }
+        ],
+    )
+
+    decision = route_email(parsed, _policy())
+
+    assert "needs_human_review" in decision.actions
 
 
 def test_telegram_formatting_is_short_and_parent_facing() -> None:
-    routing = route_email(
-        _parsed(),
-        [],
-        RoutingPolicy(
-            immediate_importance={"high", "urgent"},
-            deadline_within_days=7,
-            high_calendar_confidence=0.8,
-            parser_confidence_review_threshold=0.7,
-            audience_confidence_review_threshold=0.7,
-            daily_digest_email_types={"newsletter"},
-            daily_digest_importance={"low"},
-            relevant_audiences={"2nd grader", "5th grader", "both"},
-            telegram_for_human_review=True,
-        ),
-        now=datetime(2026, 5, 23, tzinfo=UTC),
-    )
-
+    routing = route_email(_parsed(), _policy(), now=datetime(2026, 5, 23, tzinfo=UTC))
     text = format_telegram_message("Field trip form", _parsed(), routing)
 
     assert "School: Field trip form" in text
-    assert "Relevant to: 2nd grader" in text
+    assert "Relevant to: 3rd grader" in text
     assert "Action: Return the field trip form" in text
+    assert "Date: 2026-05-25" in text
+    assert "Time: none" in text
+
+
+def test_telegram_formatting_combines_calendar_date_and_time() -> None:
+    parsed = _parsed(
+        parent_action_required=False,
+        action_items=[],
+        calendar_items=[
+            {
+                "title": "Third Grade Open House",
+                "start": None,
+                "end": None,
+                "date_text": "Monday, June 1st",
+                "time_text": "2:15-3:00",
+                "location": "Masonic Courtyard",
+                "applies_to": "unknown",
+                "confidence": 0.78,
+            }
+        ],
+    )
+    decision = route_email(parsed, _policy())
+
+    text = format_telegram_message("Open House", parsed, decision)
+
+    assert "Date: Monday, June 1st" in text
+    assert "Time: 2:15-3:00" in text
+
+
+def test_telegram_format_ignores_legacy_entities_positional_arg() -> None:
+    """Older callers may still pass an entities list; it must be ignored."""
+    routing = route_email(_parsed(), _policy(), now=datetime(2026, 5, 23, tzinfo=UTC))
+    text = format_telegram_message(
+        "Field trip form",
+        _parsed(),
+        routing,
+        [ExtractedEntity(label="date", text="ignored")],
+    )
+    assert "School: Field trip form" in text
 
 
 def test_feedback_logging(tmp_path: Path) -> None:
@@ -180,7 +347,7 @@ def test_feedback_logging(tmp_path: Path) -> None:
         PipelineEmail(message_id="<feedback@school>", subject="test")
     )
 
-    store.log_feedback(
+    feedback_id = store.log_feedback(
         FeedbackEvent(
             email_id=email_id,
             telegram_message_id=123,
@@ -188,6 +355,7 @@ def test_feedback_logging(tmp_path: Path) -> None:
             payload={"callback": "ok"},
         )
     )
+    assert isinstance(feedback_id, int) and feedback_id > 0
 
     with store._connect() as conn:
         row = conn.execute(
@@ -196,3 +364,24 @@ def test_feedback_logging(tmp_path: Path) -> None:
 
     feedback = json.loads(row["feedback_json"])
     assert feedback[0]["feedback_type"] == "useful"
+
+
+def test_openai_finetune_export_emits_canonical_jsonl(tmp_path: Path) -> None:
+    from school_email_pipeline.openai_finetune import export_jsonl
+
+    evals_dir = ROOT / "evals"
+    out_path = tmp_path / "openai_finetune.jsonl"
+    rows = export_jsonl(evals_dir, out_path)
+
+    assert rows > 0
+    with out_path.open() as fh:
+        records = [json.loads(line) for line in fh if line.strip()]
+    assert len(records) == rows
+    sample = records[0]
+    assert {m["role"] for m in sample["messages"]} == {"system", "user", "assistant"}
+    assistant_payload = json.loads(sample["messages"][-1]["content"])
+    assert "email_type" in assistant_payload
+    assert "audience" in assistant_payload
+    assert {"applies_to_second_grader", "applies_to_fifth_grader"}.issubset(
+        assistant_payload["audience"]
+    )
