@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shutil
+import subprocess
+from email.message import EmailMessage
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,7 +26,7 @@ ACK_LABELS: dict[str, str] = {
     "wrong_kid": "Recorded: wrong kid",
     "too_noisy": "Recorded: too noisy",
     "show_original": "Sending original",
-    "add_calendar": "Creating calendar file",
+    "add_calendar": "Creating calendar invite",
 }
 
 
@@ -56,6 +61,53 @@ async def _send_message(
         if isinstance(result, dict) and isinstance(result.get("message_id"), int):
             return int(result["message_id"])
     return None
+
+
+def _calendar_email_recipient() -> str:
+    return (
+        os.environ.get("EMAIL_FORWARD_CALENDAR_EMAIL")
+        or os.environ.get("CALENDAR_INVITE_EMAIL")
+        or "rahul.chhabria@gmail.com"
+    ).strip()
+
+
+def _send_calendar_email(attachment: CalendarAttachment, *, subject: str) -> bool:
+    recipient = _calendar_email_recipient()
+    sendmail = shutil.which("sendmail") or "/usr/sbin/sendmail"
+    if not recipient or not Path(sendmail).exists():
+        return False
+
+    msg = EmailMessage()
+    msg["From"] = "Ash School Email <ash@inbox.chhab.com>"
+    msg["To"] = recipient
+    msg["Subject"] = f"Calendar invite: {subject}"
+    msg.set_content(
+        "Calendar invite attached. Open this email on iOS/macOS and use the calendar option to add it.\n"
+    )
+    msg.add_attachment(
+        attachment.content.encode("utf-8"),
+        maintype="text",
+        subtype="calendar",
+        filename=attachment.filename,
+        params={"method": "REQUEST", "charset": "utf-8"},
+    )
+
+    completed = subprocess.run(
+        [sendmail, "-t"],
+        input=msg.as_bytes(),
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        logger.warning(
+            "calendar_email_send_failed",
+            extra={
+                "returncode": completed.returncode,
+                "stderr": completed.stderr.decode(errors="replace")[:500],
+            },
+        )
+        return False
+    return True
 
 
 async def _send_document(
@@ -169,7 +221,7 @@ async def _action_add_calendar(
     except (json.JSONDecodeError, ValueError) as exc:
         await _send_message(
             settings,
-            f"Could not create a calendar file from email #{email_id}: {_short(str(exc), 200)}",
+            f"Could not create a calendar invite from email #{email_id}: {_short(str(exc), 200)}",
             reply_to_message_id=reply_to,
         )
         return "invalid"
@@ -178,10 +230,19 @@ async def _action_add_calendar(
     if attachment is None:
         await _send_message(
             settings,
-            "No calendar file could be created from this email. I need a calendar item with a normalized date/time first.",
+            "No calendar invite could be created from this email. I need a calendar item with a normalized date/time first.",
             reply_to_message_id=reply_to,
         )
         return "no_item"
+
+    if _send_calendar_email(attachment, subject=attachment.filename.removesuffix(".ics")):
+        await _send_message(
+            settings,
+            f"Calendar invite emailed to {_calendar_email_recipient()}.",
+            reply_to_message_id=reply_to,
+        )
+        return "email_sent"
+
     await _send_document(settings, attachment, reply_to_message_id=reply_to)
     return "ics_sent"
 

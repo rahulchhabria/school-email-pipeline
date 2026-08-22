@@ -372,6 +372,9 @@ def test_build_calendar_attachment_for_iso_datetime() -> None:
     assert attachment.filename == "Third-Grade-Open-House.ics"
     assert "BEGIN:VCALENDAR" in attachment.content
     assert "BEGIN:VTIMEZONE" in attachment.content
+    assert "METHOD:REQUEST" in attachment.content
+    assert "ORGANIZER;CN=Ash School Email:mailto:ash@inbox.chhab.com" in attachment.content
+    assert "ATTENDEE;CN=Rahul Chhabria;ROLE=REQ-PARTICIPANT" in attachment.content
     assert "X-WR-TIMEZONE:America/Los_Angeles" in attachment.content
     assert "SUMMARY:Third Grade Open House" in attachment.content
     assert "DTSTART;TZID=America/Los_Angeles:20260601T141500" in attachment.content

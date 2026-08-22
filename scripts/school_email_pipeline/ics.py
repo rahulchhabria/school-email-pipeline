@@ -68,7 +68,7 @@ def build_calendar_attachment(
         "VERSION:2.0",
         "PRODID:-//Ash School Email Pipeline//EN",
         "CALSCALE:GREGORIAN",
-        "METHOD:PUBLISH",
+        "METHOD:REQUEST",
         f"X-WR-CALNAME:{_escape_text(title)}",
         f"X-WR-TIMEZONE:{DEFAULT_TZID}",
     ]
@@ -84,6 +84,8 @@ def build_calendar_attachment(
             "SEQUENCE:0",
             "STATUS:CONFIRMED",
             "TRANSP:OPAQUE",
+            "ORGANIZER;CN=Ash School Email:mailto:ash@inbox.chhab.com",
+            "ATTENDEE;CN=Rahul Chhabria;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=FALSE:mailto:rahul.chhabria@gmail.com",
             dtstart,
             dtend,
             f"SUMMARY:{_escape_text(title)}",
@@ -100,7 +102,7 @@ def build_calendar_attachment(
     return CalendarAttachment(
         filename=filename,
         content="\r\n".join(_fold_line(line) for line in lines) + "\r\n",
-        caption="Calendar file attached. Open it on your phone to add it to Google Calendar.",
+        caption="Calendar invite attached. Open it from email to add it to your calendar.",
     )
 
 
