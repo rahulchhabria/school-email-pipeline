@@ -107,6 +107,43 @@ class Settings:
     body_char_limit: int
 
 
+def _pipeline_settings_with_telegram() -> Any:
+    """Load pipeline settings and fill Telegram env from Ash config if needed."""
+    pipeline_settings = load_pipeline_settings()
+    if pipeline_settings.telegram_bot_token and pipeline_settings.telegram_chat_id:
+        return pipeline_settings
+    try:
+        config = tomllib.loads(Path("/home/rahul/.ash/config.toml").read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return pipeline_settings
+    telegram = config.get("telegram", {}) if isinstance(config.get("telegram"), dict) else {}
+    env_config = config.get("env", {}) if isinstance(config.get("env"), dict) else {}
+    skill_config = (
+        config.get("skills", {}).get("sfday-telegram-alert", {})
+        if isinstance(config.get("skills"), dict)
+        else {}
+    )
+    token = (
+        pipeline_settings.telegram_bot_token
+        or str(telegram.get("bot_token") or "").strip()
+        or str(env_config.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        or str(skill_config.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    )
+    chat_id = (
+        pipeline_settings.telegram_chat_id
+        or str(skill_config.get("TELEGRAM_CHAT_ID") or "").strip()
+        or str(env_config.get("TELEGRAM_CHAT_ID") or "").strip()
+        or str(env_config.get("telegram_chat_id") or "").strip()
+    )
+    return pipeline_settings.__class__(
+        **{
+            **pipeline_settings.__dict__,
+            "telegram_bot_token": token,
+            "telegram_chat_id": chat_id,
+        }
+    )
+
+
 def load_settings() -> Settings:
     """Load runtime configuration from the environment."""
     return Settings(
@@ -557,7 +594,7 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(
                 status_code=400, detail="Telegram update must be an object"
             )
-        pipeline_settings = load_pipeline_settings()
+        pipeline_settings = _pipeline_settings_with_telegram()
         store = EmailStore(pipeline_settings.database_url)
         handled = log_callback_feedback(payload, store)
         action_result: dict[str, Any] = {}

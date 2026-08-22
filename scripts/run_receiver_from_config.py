@@ -43,17 +43,22 @@ def main() -> int:
     config = _load_config()
     telegram = config.get("telegram", {})
     skill_telegram = config.get("skills", {}).get("sfday-telegram-alert", {})
+    env_config = config.get("env", {})
     sandbox_env = config.get("sandbox", {}).get("env", {})
 
     bot_token = str(
         telegram.get("bot_token")
+        or env_config.get("TELEGRAM_BOT_TOKEN")
         or sandbox_env.get("TELEGRAM_BOT_TOKEN")
         or skill_telegram.get("TELEGRAM_BOT_TOKEN")
         or ""
     ).strip()
     chat_id = str(
         skill_telegram.get("TELEGRAM_CHAT_ID")
+        or env_config.get("TELEGRAM_CHAT_ID")
+        or env_config.get("telegram_chat_id")
         or sandbox_env.get("TELEGRAM_CHAT_ID")
+        or sandbox_env.get("telegram_chat_id")
         or ""
     ).strip()
 
