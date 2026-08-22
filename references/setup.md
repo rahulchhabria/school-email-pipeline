@@ -71,6 +71,7 @@ curl -X POST http://127.0.0.1:8787/webhooks/email \
 ## Notes
 
 - Telegram delivery is handled by the receiver, not the skill.
+- Tap `Add calendar` on a school summary to create a `.ics` file when the structured parser found a high-confidence calendar item with a normalized ISO start date. Open that file on a mobile device to add it to Google Calendar.
 - Deduplication is based on `Message-ID` when available.
 - The receiver currently invokes `sfday-telegram-alert` in direct-email mode so you keep the same parent-oriented summary parameters.
 - If the skill returns `[NO_REPLY]`, the receiver suppresses Telegram delivery.

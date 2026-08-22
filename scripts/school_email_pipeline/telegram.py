@@ -37,19 +37,26 @@ def format_telegram_message(
     entities: object | None = None,
 ) -> str:
     del entities  # legacy positional argument; entities are no longer extracted
-    action = _action_text(parsed)
-    date_text, time_text = _date_time_text(parsed)
-    return "\n".join(
-        [
-            f"School: {_short(parsed.calendar_items[0].title if parsed.calendar_items else subject, 80)}",
-            f"Relevant to: {routing.relevance}",
-            f"Action: {action}",
-            f"Date: {date_text}",
-            f"Time: {time_text}",
-            f"Summary: {_short(parsed.telegram_summary, 260)}",
-            f"Why it matters: {_short(parsed.why_it_matters, 180)}",
-        ]
-    )
+    lines = [_headline(subject, parsed), "", f"For: {routing.relevance}"]
+
+    if action := _action_text(parsed):
+        lines.append(f"Action: {action}")
+    if due := _due_text(parsed):
+        lines.append(f"Due: {due}")
+    if event := _event_text(parsed):
+        lines.append(f"Event: {event}")
+    if place := _place_text(parsed):
+        lines.append(f"Place: {place}")
+    if _calendar_ready(parsed):
+        lines.append("Calendar: tap Add calendar")
+
+    lines.extend(["", f"Why: {_short(parsed.why_it_matters, 180)}"])
+    if summary := _short(parsed.telegram_summary, 260):
+        lines.append(summary)
+    if "needs_human_review" in routing.actions or parsed.needs_human_review:
+        lines.append("Check: audience/date may need review")
+
+    return "\n".join(line for line in lines if line != "")
 
 
 async def send_telegram_alert(
@@ -128,34 +135,71 @@ def _reply_markup(email_id: int) -> dict[str, Any]:
     return {"inline_keyboard": rows}
 
 
+def _headline(subject: str, parsed: StructuredParseResult) -> str:
+    if parsed.calendar_items:
+        title = parsed.calendar_items[0].title
+    else:
+        title = subject or parsed.telegram_summary or "School update"
+    return _short(title, 80) or "School update"
+
+
 def _action_text(parsed: StructuredParseResult) -> str:
     if not parsed.parent_action_required or not parsed.action_items:
-        return "none"
-    return "; ".join(_short(item.action, 100) for item in parsed.action_items[:3])
+        return ""
+    return "; ".join(
+        action for item in parsed.action_items[:3] if (action := _short(item.action, 100))
+    )
 
 
-def _date_time_text(parsed: StructuredParseResult) -> tuple[str, str]:
+def _due_text(parsed: StructuredParseResult) -> str:
     for item in parsed.action_items:
         if item.deadline:
-            return item.deadline, "none"
+            return _short(item.deadline, 80)
+    return ""
+
+
+def _event_text(parsed: StructuredParseResult) -> str:
     for item in parsed.calendar_items:
-        if item.date_text:
-            return item.date_text, _short(item.time_text or "", 80)
-        if item.start:
-            start = _short(item.start, 80)
-            if "T" in start:
-                date_part, time_part = start.split("T", 1)
-                return date_part, _short(time_part, 80)
-            return start, _short(item.time_text or "", 80)
-        if item.time_text:
-            return "none", _short(item.time_text, 80)
-    return "none", "none"
+        date_text = _short(item.date_text or "", 80)
+        time_text = _short(item.time_text or "", 80)
+        if not date_text and item.start:
+            date_text, start_time = _split_start(item.start)
+            time_text = time_text or start_time
+        if date_text and time_text:
+            return f"{date_text}, {time_text}"
+        if date_text:
+            return date_text
+        if time_text:
+            return time_text
+    return ""
+
+
+def _place_text(parsed: StructuredParseResult) -> str:
+    for item in parsed.calendar_items:
+        if item.location:
+            return _short(item.location, 120)
+    return ""
+
+
+def _calendar_ready(parsed: StructuredParseResult) -> bool:
+    return any(
+        bool(item.start and item.confidence >= 0.7 and item.start[:10].count("-") == 2)
+        for item in parsed.calendar_items
+    )
+
+
+def _split_start(value: str) -> tuple[str, str]:
+    start = _short(value, 80)
+    if "T" not in start:
+        return start, ""
+    date_part, time_part = start.split("T", 1)
+    return date_part, time_part
 
 
 def _short(value: str, limit: int) -> str:
     value = " ".join((value or "").split()).strip()
     if not value:
-        return "none"
+        return ""
     if len(value) <= limit:
         return value
     return value[: limit - 1].rstrip() + "…"

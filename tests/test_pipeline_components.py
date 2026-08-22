@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from school_email_pipeline.cleanup import cleanup_email_body  # noqa: E402
 from school_email_pipeline.entities import extract_entities  # noqa: E402
+from school_email_pipeline.ics import build_calendar_attachment  # noqa: E402
 from school_email_pipeline.models import (  # noqa: E402
     ExtractedEntity,
     FeedbackEvent,
@@ -295,11 +296,12 @@ def test_telegram_formatting_is_short_and_parent_facing() -> None:
     routing = route_email(_parsed(), _policy(), now=datetime(2026, 5, 23, tzinfo=UTC))
     text = format_telegram_message("Field trip form", _parsed(), routing)
 
-    assert "School: Field trip form" in text
-    assert "Relevant to: 3rd grader" in text
+    assert text.startswith("Field trip form")
+    assert "For: 3rd grader" in text
     assert "Action: Return the field trip form" in text
-    assert "Date: 2026-05-25" in text
-    assert "Time: none" in text
+    assert "Due: 2026-05-25" in text
+    assert "Time: none" not in text
+    assert "Date:" not in text
 
 
 def test_telegram_formatting_combines_calendar_date_and_time() -> None:
@@ -323,8 +325,10 @@ def test_telegram_formatting_combines_calendar_date_and_time() -> None:
 
     text = format_telegram_message("Open House", parsed, decision)
 
-    assert "Date: Monday, June 1st" in text
-    assert "Time: 2:15-3:00" in text
+    assert text.startswith("Third Grade Open House")
+    assert "Event: Monday, June 1st, 2:15-3:00" in text
+    assert "Place: Masonic Courtyard" in text
+    assert "Action:" not in text
 
 
 def test_telegram_format_ignores_legacy_entities_positional_arg() -> None:
@@ -336,7 +340,63 @@ def test_telegram_format_ignores_legacy_entities_positional_arg() -> None:
         routing,
         [ExtractedEntity(label="date", text="ignored")],
     )
-    assert "School: Field trip form" in text
+    assert text.startswith("Field trip form")
+
+
+def test_build_calendar_attachment_for_iso_datetime() -> None:
+    parsed = _parsed(
+        parent_action_required=False,
+        action_items=[],
+        calendar_items=[
+            {
+                "title": "Third Grade Open House",
+                "start": "2026-06-01T14:15:00",
+                "end": "2026-06-01T15:00:00",
+                "date_text": "Monday, June 1",
+                "time_text": "2:15 PM - 3:00 PM",
+                "location": "Masonic Courtyard",
+                "applies_to": "3rd grader",
+                "confidence": 0.9,
+            }
+        ],
+    )
+    email = PipelineEmail(
+        message_id="<open-house@school>",
+        sender="School Office <office@school.edu>",
+        subject="Open House",
+    )
+
+    attachment = build_calendar_attachment(email, parsed)
+
+    assert attachment is not None
+    assert attachment.filename == "Third-Grade-Open-House.ics"
+    assert "BEGIN:VCALENDAR" in attachment.content
+    assert "SUMMARY:Third Grade Open House" in attachment.content
+    assert "DTSTART:20260601T141500" in attachment.content
+    assert "DTEND:20260601T150000" in attachment.content
+    assert "LOCATION:Masonic Courtyard" in attachment.content
+
+
+def test_build_calendar_attachment_skips_unresolved_dates() -> None:
+    parsed = _parsed(
+        parent_action_required=False,
+        action_items=[],
+        calendar_items=[
+            {
+                "title": "Open House",
+                "start": None,
+                "end": None,
+                "date_text": "next Monday",
+                "time_text": "after lunch",
+                "location": None,
+                "applies_to": "unknown",
+                "confidence": 0.9,
+            }
+        ],
+    )
+    email = PipelineEmail(message_id="<open-house@school>", subject="Open House")
+
+    assert build_calendar_attachment(email, parsed) is None
 
 
 def test_feedback_logging(tmp_path: Path) -> None:

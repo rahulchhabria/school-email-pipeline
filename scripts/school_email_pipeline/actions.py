@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-import shutil
-import subprocess
 from typing import Any
 
 import httpx
 
+from .ics import CalendarAttachment, build_calendar_attachment
+from .models import PipelineEmail, StructuredParseResult
 from .settings import PipelineSettings
 from .storage import EmailStore
 
@@ -22,7 +21,7 @@ ACK_LABELS: dict[str, str] = {
     "wrong_kid": "Recorded: wrong kid",
     "too_noisy": "Recorded: too noisy",
     "show_original": "Sending original",
-    "add_calendar": "Adding to calendar",
+    "add_calendar": "Creating calendar file",
 }
 
 
@@ -54,6 +53,40 @@ async def _send_message(
         response.raise_for_status()
         data = response.json()
         result = data.get("result") if isinstance(data, dict) else None
+        if isinstance(result, dict) and isinstance(result.get("message_id"), int):
+            return int(result["message_id"])
+    return None
+
+
+async def _send_document(
+    settings: PipelineSettings,
+    attachment: CalendarAttachment,
+    *,
+    reply_to_message_id: int | None = None,
+) -> int | None:
+    if settings.dry_run or not settings.telegram_bot_token or not settings.telegram_chat_id:
+        return None
+    data: dict[str, Any] = {
+        "chat_id": settings.telegram_chat_id,
+        "caption": attachment.caption,
+    }
+    if reply_to_message_id:
+        data["reply_to_message_id"] = str(reply_to_message_id)
+        data["allow_sending_without_reply"] = "true"
+    files = {
+        "document": (
+            attachment.filename,
+            attachment.content.encode("utf-8"),
+            "text/calendar",
+        )
+    }
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.post(
+            _bot_url(settings, "sendDocument"), data=data, files=files
+        )
+        response.raise_for_status()
+        payload = response.json()
+        result = payload.get("result") if isinstance(payload, dict) else None
         if isinstance(result, dict) and isinstance(result.get("message_id"), int):
             return int(result["message_id"])
     return None
@@ -110,57 +143,6 @@ async def _action_show_original(
     return "sent"
 
 
-def _build_calendar_prompt(parsed_json: str, subject: str, sender: str) -> str:
-    return "\n".join(
-        [
-            "Use the google skill to create a Google Calendar event from this forwarded school email.",
-            "Use account alias 'default' and calendar 'primary' unless the email clearly implies otherwise.",
-            "Return a one-line confirmation including event title, start, and a link if available.",
-            "If start time is missing, infer a reasonable all-day date and note that in the confirmation.",
-            "If no calendar item can be inferred, reply exactly 'NO_CALENDAR_ITEM'.",
-            "",
-            f"Email subject: {subject}",
-            f"Email sender: {sender}",
-            "",
-            "Structured parse JSON (use calendar_items first, fall back to action_items deadlines):",
-            parsed_json,
-        ]
-    )
-
-
-def _run_ash_chat(prompt: str, settings: PipelineSettings) -> tuple[int, str, str]:
-    uv_bin = shutil.which("uv") or "/home/linuxbrew/.linuxbrew/bin/uv"
-    cmd = [uv_bin, "run", "ash", "chat", "--no-streaming"]
-    if settings.ash_model:
-        cmd.extend(["--model", settings.ash_model])
-    cmd.append(prompt)
-    env = os.environ.copy()
-    env["NO_COLOR"] = "1"
-    env["PYTHONUNBUFFERED"] = "1"
-    completed = subprocess.run(
-        cmd,
-        cwd=settings.ash_cwd,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    return completed.returncode, completed.stdout, completed.stderr
-
-
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
-
-def _clean(text: str) -> str:
-    cleaned = _ANSI_RE.sub("", text or "").strip()
-    lines = [line.rstrip() for line in cleaned.splitlines()]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines).strip()
-
 
 async def _action_add_calendar(
     settings: PipelineSettings,
@@ -172,38 +154,36 @@ async def _action_add_calendar(
     if row is None:
         await _send_message(settings, f"Email #{email_id} not found.", reply_to_message_id=reply_to)
         return "missing"
-    parsed_json = row.get("structured_parse_json") or "{}"
-    subject = row.get("subject") or ""
-    sender = row.get("sender") or ""
-
-    await _send_message(
-        settings,
-        f"Working on calendar event for email #{email_id}\u2026",
-        reply_to_message_id=reply_to,
-    )
-    prompt = _build_calendar_prompt(parsed_json, subject, sender)
     try:
-        rc, stdout, stderr = _run_ash_chat(prompt, settings)
-    except subprocess.TimeoutExpired:
-        await _send_message(settings, "Calendar creation timed out.", reply_to_message_id=reply_to)
-        return "timeout"
-    output = _clean(stdout) or _clean(stderr) or "(no output)"
-    if rc != 0:
+        raw = json.loads(row.get("raw_email_json") or "{}")
+        parsed = StructuredParseResult.model_validate_json(
+            row.get("structured_parse_json") or "{}"
+        )
+        email = PipelineEmail.model_validate(
+            {
+                **raw,
+                "subject": row.get("subject") or raw.get("subject") or "",
+                "sender": row.get("sender") or raw.get("sender") or "",
+            }
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
         await _send_message(
             settings,
-            f"Calendar creation failed:\n{_short(output, 1500)}",
+            f"Could not create a calendar file from email #{email_id}: {_short(str(exc), 200)}",
             reply_to_message_id=reply_to,
         )
-        return "failed"
-    if "NO_CALENDAR_ITEM" in output:
+        return "invalid"
+
+    attachment = build_calendar_attachment(email, parsed)
+    if attachment is None:
         await _send_message(
             settings,
-            "No calendar item could be inferred from this email.",
+            "No calendar file could be created from this email. I need a calendar item with a normalized date/time first.",
             reply_to_message_id=reply_to,
         )
         return "no_item"
-    await _send_message(settings, _short(output, 1500), reply_to_message_id=reply_to)
-    return "created"
+    await _send_document(settings, attachment, reply_to_message_id=reply_to)
+    return "ics_sent"
 
 
 async def dispatch_callback_action(
