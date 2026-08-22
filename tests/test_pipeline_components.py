@@ -371,9 +371,11 @@ def test_build_calendar_attachment_for_iso_datetime() -> None:
     assert attachment is not None
     assert attachment.filename == "Third-Grade-Open-House.ics"
     assert "BEGIN:VCALENDAR" in attachment.content
+    assert "BEGIN:VTIMEZONE" in attachment.content
+    assert "X-WR-TIMEZONE:America/Los_Angeles" in attachment.content
     assert "SUMMARY:Third Grade Open House" in attachment.content
-    assert "DTSTART:20260601T141500" in attachment.content
-    assert "DTEND:20260601T150000" in attachment.content
+    assert "DTSTART;TZID=America/Los_Angeles:20260601T141500" in attachment.content
+    assert "DTEND;TZID=America/Los_Angeles:20260601T150000" in attachment.content
     assert "LOCATION:Masonic Courtyard" in attachment.content
 
 

@@ -10,6 +10,7 @@ from .models import CalendarItem, PipelineEmail, StructuredParseResult
 
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ISO_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
+DEFAULT_TZID = "America/Los_Angeles"
 
 
 @dataclass(frozen=True)
@@ -43,8 +44,8 @@ def build_calendar_attachment(
             end_dt = datetime.fromisoformat(end)
         else:
             end_dt = start_dt + timedelta(hours=1)
-        dtstart = f"DTSTART:{_format_local_datetime(start_dt)}"
-        dtend = f"DTEND:{_format_local_datetime(end_dt)}"
+        dtstart = f"DTSTART;TZID={DEFAULT_TZID}:{_format_local_datetime(start_dt)}"
+        dtend = f"DTEND;TZID={DEFAULT_TZID}:{_format_local_datetime(end_dt)}"
     else:
         return None
 
@@ -61,19 +62,33 @@ def build_calendar_attachment(
         ]
         if part
     )
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Ash School Email Pipeline//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        "BEGIN:VEVENT",
-        f"UID:{uid}@ash-school-email",
-        f"DTSTAMP:{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}",
-        dtstart,
-        dtend,
-        f"SUMMARY:{_escape_text(title)}",
+        f"X-WR-CALNAME:{_escape_text(title)}",
+        f"X-WR-TIMEZONE:{DEFAULT_TZID}",
     ]
+    if "TZID=" in dtstart or "TZID=" in dtend:
+        lines.extend(_vtimezone_lines(DEFAULT_TZID))
+    lines.extend(
+        [
+            "BEGIN:VEVENT",
+            f"UID:{uid}@ash-school-email",
+            f"DTSTAMP:{stamp}",
+            f"CREATED:{stamp}",
+            f"LAST-MODIFIED:{stamp}",
+            "SEQUENCE:0",
+            "STATUS:CONFIRMED",
+            "TRANSP:OPAQUE",
+            dtstart,
+            dtend,
+            f"SUMMARY:{_escape_text(title)}",
+        ]
+    )
     if item.location:
         lines.append(f"LOCATION:{_escape_text(item.location)}")
     if description:
@@ -87,6 +102,31 @@ def build_calendar_attachment(
         content="\r\n".join(_fold_line(line) for line in lines) + "\r\n",
         caption="Calendar file attached. Open it on your phone to add it to Google Calendar.",
     )
+
+
+def _vtimezone_lines(tzid: str) -> list[str]:
+    if tzid != "America/Los_Angeles":
+        return ["BEGIN:VTIMEZONE", f"TZID:{tzid}", "END:VTIMEZONE"]
+    return [
+        "BEGIN:VTIMEZONE",
+        "TZID:America/Los_Angeles",
+        "X-LIC-LOCATION:America/Los_Angeles",
+        "BEGIN:DAYLIGHT",
+        "TZOFFSETFROM:-0800",
+        "TZOFFSETTO:-0700",
+        "TZNAME:PDT",
+        "DTSTART:19700308T020000",
+        "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+        "END:DAYLIGHT",
+        "BEGIN:STANDARD",
+        "TZOFFSETFROM:-0700",
+        "TZOFFSETTO:-0800",
+        "TZNAME:PST",
+        "DTSTART:19701101T020000",
+        "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+        "END:STANDARD",
+        "END:VTIMEZONE",
+    ]
 
 
 def _best_calendar_item(items: list[CalendarItem]) -> CalendarItem | None:

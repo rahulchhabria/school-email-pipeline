@@ -77,7 +77,7 @@ async def _send_document(
         "document": (
             attachment.filename,
             attachment.content.encode("utf-8"),
-            "text/calendar",
+            "text/calendar; charset=utf-8",
         )
     }
     async with httpx.AsyncClient(timeout=20.0) as client:
