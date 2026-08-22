@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from school_email_pipeline.cleanup import cleanup_email_body  # noqa: E402
 from school_email_pipeline.entities import extract_entities  # noqa: E402
-from school_email_pipeline.actions import _send_calendar_email  # noqa: E402
+from school_email_pipeline.actions import _google_calendar_url, _send_calendar_email  # noqa: E402
 from school_email_pipeline.ics import CalendarAttachment, build_calendar_attachment  # noqa: E402
 from school_email_pipeline.models import (  # noqa: E402
     ExtractedEntity,
@@ -382,6 +382,38 @@ def test_build_calendar_attachment_for_iso_datetime() -> None:
     assert "DTEND;TZID=America/Los_Angeles:20260601T150000" in attachment.content
     assert "LOCATION:Masonic Courtyard" in attachment.content
 
+
+
+def test_google_calendar_url_for_iso_datetime() -> None:
+    parsed = _parsed(
+        calendar_items=[
+            {
+                "title": "Third Grade Open House",
+                "start": "2026-06-01T14:15:00",
+                "end": "2026-06-01T15:00:00",
+                "date_text": "Monday, June 1",
+                "time_text": "2:15 PM - 3:00 PM",
+                "location": "Masonic Courtyard",
+                "applies_to": "3rd grader",
+                "confidence": 0.9,
+            }
+        ],
+    )
+    email = PipelineEmail(
+        message_id="<open-house@school>",
+        sender="School Office <office@school.edu>",
+        subject="Open House",
+    )
+
+    url = _google_calendar_url(email, parsed)
+
+    assert url is not None
+    assert url.startswith("https://calendar.google.com/calendar/render?")
+    assert "action=TEMPLATE" in url
+    assert "text=Third+Grade+Open+House" in url
+    assert "dates=20260601T141500%2F20260601T150000" in url
+    assert "location=Masonic+Courtyard" in url
+    assert "ctz=America%2FLos_Angeles" in url
 
 def test_build_calendar_attachment_skips_unresolved_dates() -> None:
     parsed = _parsed(

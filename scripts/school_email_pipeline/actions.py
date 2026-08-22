@@ -8,9 +8,11 @@ import shutil
 import smtplib
 import ssl
 import subprocess
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -42,6 +44,7 @@ async def _send_message(
     *,
     reply_to_message_id: int | None = None,
     parse_mode: str | None = None,
+    reply_markup: dict[str, Any] | None = None,
 ) -> int | None:
     if settings.dry_run or not settings.telegram_bot_token or not settings.telegram_chat_id:
         return None
@@ -55,6 +58,8 @@ async def _send_message(
         payload["allow_sending_without_reply"] = True
     if parse_mode:
         payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(_bot_url(settings, "sendMessage"), json=payload)
         response.raise_for_status()
@@ -64,6 +69,60 @@ async def _send_message(
             return int(result["message_id"])
     return None
 
+
+
+def _google_calendar_url(email: PipelineEmail, parsed: StructuredParseResult) -> str | None:
+    item = max(
+        (item for item in parsed.calendar_items if item.start and item.confidence >= 0.7),
+        key=lambda item: item.confidence,
+        default=None,
+    )
+    if item is None:
+        return None
+
+    start = (item.start or "").strip()
+    end = (item.end or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", start):
+        start_date = datetime.fromisoformat(start).date()
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", end):
+            end_date = datetime.fromisoformat(end).date()
+        else:
+            end_date = start_date + timedelta(days=1)
+        dates = f"{start_date:%Y%m%d}/{end_date:%Y%m%d}"
+    elif re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", start):
+        start_dt = datetime.fromisoformat(start)
+        if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", end):
+            end_dt = datetime.fromisoformat(end)
+        else:
+            end_dt = start_dt + timedelta(hours=1)
+        dates = f"{start_dt:%Y%m%dT%H%M%S}/{end_dt:%Y%m%dT%H%M%S}"
+    else:
+        return None
+
+    details = "\n".join(
+        part
+        for part in [
+            parsed.telegram_summary,
+            parsed.why_it_matters,
+            f"From: {email.sender}" if email.sender else "",
+            f"Subject: {email.subject}" if email.subject else "",
+        ]
+        if part
+    )
+    params = {
+        "action": "TEMPLATE",
+        "text": item.title or email.subject or "School event",
+        "dates": dates,
+        "details": details,
+        "ctz": "America/Los_Angeles",
+    }
+    if item.location:
+        params["location"] = item.location
+    return "https://calendar.google.com/calendar/render?" + urlencode(params)
+
+
+def _google_calendar_reply_markup(url: str) -> dict[str, Any]:
+    return {"inline_keyboard": [[{"text": "Open Google Calendar", "url": url}]]}
 
 def _calendar_email_recipient() -> str:
     return (
@@ -296,25 +355,22 @@ async def _action_add_calendar(
         )
         return "invalid"
 
-    attachment = build_calendar_attachment(email, parsed)
-    if attachment is None:
+    calendar_url = _google_calendar_url(email, parsed)
+    if calendar_url is None:
         await _send_message(
             settings,
-            "No calendar invite could be created from this email. I need a calendar item with a normalized date/time first.",
+            "No calendar link could be created from this email. I need a calendar item with a normalized date/time first.",
             reply_to_message_id=reply_to,
         )
         return "no_item"
 
-    if _send_calendar_email(attachment, subject=attachment.filename.removesuffix(".ics")):
-        await _send_message(
-            settings,
-            f"Calendar invite emailed to {_calendar_email_recipient()}.",
-            reply_to_message_id=reply_to,
-        )
-        return "email_sent"
-
-    await _send_document(settings, attachment, reply_to_message_id=reply_to)
-    return "ics_sent"
+    await _send_message(
+        settings,
+        "Open Google Calendar to review and save this event.",
+        reply_to_message_id=reply_to,
+        reply_markup=_google_calendar_reply_markup(calendar_url),
+    )
+    return "google_link_sent"
 
 
 async def dispatch_callback_action(
