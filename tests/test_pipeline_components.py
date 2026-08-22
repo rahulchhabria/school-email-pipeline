@@ -11,7 +11,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from school_email_pipeline.cleanup import cleanup_email_body  # noqa: E402
 from school_email_pipeline.entities import extract_entities  # noqa: E402
-from school_email_pipeline.ics import build_calendar_attachment  # noqa: E402
+from school_email_pipeline.actions import _send_calendar_email  # noqa: E402
+from school_email_pipeline.ics import CalendarAttachment, build_calendar_attachment  # noqa: E402
 from school_email_pipeline.models import (  # noqa: E402
     ExtractedEntity,
     FeedbackEvent,
@@ -450,3 +451,46 @@ def test_openai_finetune_export_emits_canonical_jsonl(tmp_path: Path) -> None:
     assert {"applies_to_second_grader", "applies_to_fifth_grader"}.issubset(
         assistant_payload["audience"]
     )
+
+
+def test_send_calendar_email_prefers_configured_smtp(monkeypatch) -> None:
+    sent: list[object] = []
+
+    class FakeSMTP:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            assert host == "smtp.example.com"
+            assert port == 587
+            assert timeout == 20
+
+        def __enter__(self) -> "FakeSMTP":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def starttls(self, *, context: object) -> None:
+            sent.append("starttls")
+
+        def login(self, username: str, password: str) -> None:
+            sent.append((username, password))
+
+        def send_message(self, msg: object) -> None:
+            sent.append(msg)
+
+    monkeypatch.setenv("EMAIL_FORWARD_CALENDAR_EMAIL", "rahul.chhabria@gmail.com")
+    monkeypatch.setenv("EMAIL_FORWARD_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("EMAIL_FORWARD_SMTP_USER", "user@example.com")
+    monkeypatch.setenv("EMAIL_FORWARD_SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("school_email_pipeline.actions.smtplib.SMTP", FakeSMTP)
+    monkeypatch.setattr("school_email_pipeline.actions._send_calendar_email_via_sendmail", lambda msg: False)
+
+    attachment = CalendarAttachment(
+        filename="event.ics",
+        content="BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n",
+        caption="Calendar invite attached.",
+    )
+
+    assert _send_calendar_email(attachment, subject="School Event") is True
+    assert "starttls" in sent
+    assert ("user@example.com", "secret") in sent
+    assert any(getattr(item, "get", lambda key: None)("To") == "rahul.chhabria@gmail.com" for item in sent)

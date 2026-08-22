@@ -5,6 +5,8 @@ import logging
 import os
 import re
 import shutil
+import smtplib
+import ssl
 import subprocess
 from email.message import EmailMessage
 from pathlib import Path
@@ -71,14 +73,29 @@ def _calendar_email_recipient() -> str:
     ).strip()
 
 
-def _send_calendar_email(attachment: CalendarAttachment, *, subject: str) -> bool:
+def _calendar_email_sender() -> str:
+    return (
+        os.environ.get("EMAIL_FORWARD_SMTP_FROM")
+        or os.environ.get("EMAIL_FORWARD_EMAIL_FROM")
+        or "Ash School Email <ash@inbox.chhab.com>"
+    ).strip()
+
+
+def _calendar_smtp_port() -> int:
+    raw = (os.environ.get("EMAIL_FORWARD_SMTP_PORT") or "587").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return 587
+
+
+def _build_calendar_email(attachment: CalendarAttachment, *, subject: str) -> EmailMessage | None:
     recipient = _calendar_email_recipient()
-    sendmail = shutil.which("sendmail") or "/usr/sbin/sendmail"
-    if not recipient or not Path(sendmail).exists():
-        return False
+    if not recipient:
+        return None
 
     msg = EmailMessage()
-    msg["From"] = "Ash School Email <ash@inbox.chhab.com>"
+    msg["From"] = _calendar_email_sender()
     msg["To"] = recipient
     msg["Subject"] = f"Calendar invite: {subject}"
     msg.set_content(
@@ -91,6 +108,52 @@ def _send_calendar_email(attachment: CalendarAttachment, *, subject: str) -> boo
         filename=attachment.filename,
         params={"method": "REQUEST", "charset": "utf-8"},
     )
+    return msg
+
+
+def _send_calendar_email_via_smtp(msg: EmailMessage) -> bool:
+    host = (os.environ.get("EMAIL_FORWARD_SMTP_HOST") or "").strip()
+    if not host:
+        return False
+
+    port = _calendar_smtp_port()
+    username = (os.environ.get("EMAIL_FORWARD_SMTP_USER") or "").strip()
+    password = os.environ.get("EMAIL_FORWARD_SMTP_PASSWORD") or ""
+    use_ssl = (os.environ.get("EMAIL_FORWARD_SMTP_SSL") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    use_starttls = (
+        os.environ.get("EMAIL_FORWARD_SMTP_STARTTLS") or "true"
+    ).strip().lower() not in {"0", "false", "no"}
+
+    try:
+        if use_ssl:
+            with smtplib.SMTP_SSL(host, port, timeout=20) as smtp:
+                if username or password:
+                    smtp.login(username, password)
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=20) as smtp:
+                if use_starttls:
+                    smtp.starttls(context=ssl.create_default_context())
+                if username or password:
+                    smtp.login(username, password)
+                smtp.send_message(msg)
+    except OSError as exc:
+        logger.warning("calendar_email_smtp_failed", extra={"error": str(exc)[:500]})
+        return False
+    except smtplib.SMTPException as exc:
+        logger.warning("calendar_email_smtp_failed", extra={"error": str(exc)[:500]})
+        return False
+    return True
+
+
+def _send_calendar_email_via_sendmail(msg: EmailMessage) -> bool:
+    sendmail = shutil.which("sendmail") or "/usr/sbin/sendmail"
+    if not Path(sendmail).exists():
+        return False
 
     completed = subprocess.run(
         [sendmail, "-t"],
@@ -100,7 +163,7 @@ def _send_calendar_email(attachment: CalendarAttachment, *, subject: str) -> boo
     )
     if completed.returncode != 0:
         logger.warning(
-            "calendar_email_send_failed",
+            "calendar_email_sendmail_failed",
             extra={
                 "returncode": completed.returncode,
                 "stderr": completed.stderr.decode(errors="replace")[:500],
@@ -108,6 +171,13 @@ def _send_calendar_email(attachment: CalendarAttachment, *, subject: str) -> boo
         )
         return False
     return True
+
+
+def _send_calendar_email(attachment: CalendarAttachment, *, subject: str) -> bool:
+    msg = _build_calendar_email(attachment, subject=subject)
+    if msg is None:
+        return False
+    return _send_calendar_email_via_smtp(msg) or _send_calendar_email_via_sendmail(msg)
 
 
 async def _send_document(
