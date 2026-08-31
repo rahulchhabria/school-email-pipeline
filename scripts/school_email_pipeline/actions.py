@@ -136,7 +136,7 @@ def _calendar_email_sender() -> str:
     return (
         os.environ.get("EMAIL_FORWARD_SMTP_FROM")
         or os.environ.get("EMAIL_FORWARD_EMAIL_FROM")
-        or "Ash School Email <ash@inbox.chhab.com>"
+        or "Pigeon School Email <ash@inbox.chhab.com>"
     ).strip()
 
 

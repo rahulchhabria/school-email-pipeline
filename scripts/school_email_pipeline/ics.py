@@ -66,7 +66,7 @@ def build_calendar_attachment(
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//Ash School Email Pipeline//EN",
+        "PRODID:-//Pigeon School Email Pipeline//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:REQUEST",
         f"X-WR-CALNAME:{_escape_text(title)}",
@@ -84,7 +84,7 @@ def build_calendar_attachment(
             "SEQUENCE:0",
             "STATUS:CONFIRMED",
             "TRANSP:OPAQUE",
-            "ORGANIZER;CN=Ash School Email:mailto:ash@inbox.chhab.com",
+            "ORGANIZER;CN=Pigeon School Email:mailto:ash@inbox.chhab.com",
             "ATTENDEE;CN=Rahul Chhabria;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=FALSE:mailto:rahul.chhabria@gmail.com",
             dtstart,
             dtend,

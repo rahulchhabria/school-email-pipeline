@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
@@ -66,6 +67,55 @@ FORWARDED_HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 logger = logging.getLogger("email_forward_receiver")
+
+_SENTRY_REDACTED = "[Filtered]"
+_SENTRY_SENSITIVE_KEYS = {
+    "api_key",
+    "authorization",
+    "bot_token",
+    "cookie",
+    "password",
+    "secret",
+    "set-cookie",
+    "token",
+}
+_SENTRY_TELEGRAM_BOT_URL = re.compile(
+    r"(https?://api\.telegram\.org/bot)[^/\s?#]+",
+    flags=re.IGNORECASE,
+)
+_SENTRY_BEARER_TOKEN = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
+
+
+def _scrub_sentry_value(value: Any, *, key: str | None = None) -> Any:
+    if key and key.lower() in _SENTRY_SENSITIVE_KEYS:
+        return _SENTRY_REDACTED
+    if isinstance(value, dict):
+        return {
+            item_key: _scrub_sentry_value(item, key=str(item_key))
+            for item_key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_scrub_sentry_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_sentry_value(item) for item in value)
+    if isinstance(value, str):
+        value = _SENTRY_TELEGRAM_BOT_URL.sub(r"\1[Filtered]", value)
+        return _SENTRY_BEARER_TOKEN.sub("Bearer [Filtered]", value)
+    return value
+
+
+def _before_sentry_send(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any]:
+    return _scrub_sentry_value(event)
+
+
+def _before_sentry_breadcrumb(
+    breadcrumb: dict[str, Any], _hint: dict[str, Any]
+) -> dict[str, Any]:
+    return _scrub_sentry_value(breadcrumb)
+
+
+def _before_sentry_log(log: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any]:
+    return _scrub_sentry_value(log)
 
 
 class StateModel(BaseModel):
@@ -647,7 +697,6 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=400, detail="Command payload must be an object")
         message = payload.get("message") or {}
         text = str(message.get("text") or "").strip()
-        chat_id = message.get("chat", {}).get("id") if isinstance(message.get("chat"), dict) else None
 
         if text.startswith("/digest"):
             parts = text.split()
@@ -721,8 +770,11 @@ def _init_sentry() -> None:
                 "SENTRY_STREAM_GEN_AI_SPANS", "1"
             ).lower()
             not in {"0", "false", "no", "off"},
-            send_default_pii=os.environ.get("SENTRY_SEND_DEFAULT_PII", "1").lower()
+            send_default_pii=os.environ.get("SENTRY_SEND_DEFAULT_PII", "0").lower()
             not in {"0", "false", "no", "off"},
+            before_send=_before_sentry_send,
+            before_breadcrumb=_before_sentry_breadcrumb,
+            before_send_log=_before_sentry_log,
             enable_logs=True,
         )
         logger.info("sentry_initialized")

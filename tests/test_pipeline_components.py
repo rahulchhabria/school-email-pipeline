@@ -25,7 +25,7 @@ from school_email_pipeline.routing import RoutingPolicy, route_email  # noqa: E4
 from school_email_pipeline.settings import PipelineSettings  # noqa: E402
 from school_email_pipeline.storage import EmailStore  # noqa: E402
 from school_email_pipeline.telegram import format_telegram_message  # noqa: E402
-from email_webhook_server import normalize_email  # noqa: E402
+from email_webhook_server import _before_sentry_send, normalize_email  # noqa: E402
 
 
 def _settings(tmp_path: Path) -> PipelineSettings:
@@ -50,6 +50,21 @@ def _settings(tmp_path: Path) -> PipelineSettings:
         ash_model=None,
         senders_config_path=tmp_path / "senders.toml",
     )
+
+
+def test_sentry_processor_scrubs_credentials() -> None:
+    token = "123456:secret-value"
+    payload = {
+        "url": f"https://api.telegram.org/bot{token}/sendMessage",
+        "headers": {"Authorization": "Bearer another-secret"},
+        "extra": {"api_key": "key-value"},
+    }
+
+    rendered = repr(_before_sentry_send(payload, {}))
+
+    assert token not in rendered
+    assert "another-secret" not in rendered
+    assert "key-value" not in rendered
 
 
 def _policy() -> RoutingPolicy:
@@ -374,7 +389,10 @@ def test_build_calendar_attachment_for_iso_datetime() -> None:
     assert "BEGIN:VCALENDAR" in attachment.content
     assert "BEGIN:VTIMEZONE" in attachment.content
     assert "METHOD:REQUEST" in attachment.content
-    assert "ORGANIZER;CN=Ash School Email:mailto:ash@inbox.chhab.com" in attachment.content
+    assert (
+        "ORGANIZER;CN=Pigeon School Email:mailto:ash@inbox.chhab.com"
+        in attachment.content
+    )
     assert "ATTENDEE;CN=Rahul Chhabria;ROLE=REQ-PARTICIPANT" in attachment.content
     assert "X-WR-TIMEZONE:America/Los_Angeles" in attachment.content
     assert "SUMMARY:Third Grade Open House" in attachment.content
