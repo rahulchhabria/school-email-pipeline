@@ -24,7 +24,10 @@ from school_email_pipeline.pipeline import _is_google_calendar_notification  # n
 from school_email_pipeline.routing import RoutingPolicy, route_email  # noqa: E402
 from school_email_pipeline.settings import PipelineSettings  # noqa: E402
 from school_email_pipeline.storage import EmailStore  # noqa: E402
-from school_email_pipeline.telegram import format_telegram_message  # noqa: E402
+from school_email_pipeline.telegram import (  # noqa: E402
+    _register_email_focus,
+    format_telegram_message,
+)
 from email_webhook_server import _before_sentry_send, normalize_email  # noqa: E402
 
 
@@ -544,3 +547,33 @@ def test_send_calendar_email_prefers_configured_smtp(monkeypatch) -> None:
     assert "starttls" in sent
     assert ("user@example.com", "secret") in sent
     assert any(getattr(item, "get", lambda key: None)("To") == "rahul.chhabria@gmail.com" for item in sent)
+
+
+def test_register_email_focus_writes_chat_state(tmp_path: Path, monkeypatch) -> None:
+    ash_home = tmp_path / "ash-home"
+    monkeypatch.setenv("ASH_HOME", str(ash_home))
+    settings = _settings(tmp_path)
+    settings = PipelineSettings(
+        **{
+            **settings.__dict__,
+            "telegram_chat_id": "chat-1",
+            "dry_run": False,
+        }
+    )
+
+    _register_email_focus(
+        settings,
+        email_id=12,
+        telegram_message_id=345,
+        text="Soccer practice update\nPlace: Kezar Field\nPractice starts at 4pm.",
+    )
+
+    state_path = ash_home / "chats" / "telegram" / "chat-1" / "state.json"
+    state = json.loads(state_path.read_text())
+
+    assert state["active_thread_id"] == "345"
+    assert state["active_thread_reason"] == "external_focus"
+    assert state["thread_index"]["345"] == "345"
+    assert state["active_focus"][-1]["kind"] == "email"
+    assert state["active_focus"][-1]["source_id"] == "email:12"
+    assert "practice" in state["active_focus"][-1]["entities"]

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
+import re
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -85,7 +90,9 @@ async def send_telegram_alert(
             raise RuntimeError(f"Telegram API error: {data}")
         message = data.get("result", {})
         if isinstance(message, dict) and isinstance(message.get("message_id"), int):
-            return int(message["message_id"])
+            message_id = int(message["message_id"])
+            _register_email_focus(settings, email_id, message_id, text)
+            return message_id
     return None
 
 
@@ -203,3 +210,99 @@ def _short(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
     return value[: limit - 1].rstrip() + "…"
+
+
+_WORD_RE = re.compile(r"[a-z0-9][a-z0-9'-]*", re.I)
+_STOPWORDS = {
+    "about", "action", "after", "and", "are", "calendar", "check", "due", "for",
+    "from", "now", "the", "this", "today", "tomorrow", "why", "with", "you",
+}
+
+
+def _register_email_focus(
+    settings: PipelineSettings,
+    email_id: int,
+    telegram_message_id: int,
+    text: str,
+) -> None:
+    """Mark the delivered email summary as the chat's current focus."""
+    ash_home = Path(os.environ.get("ASH_HOME", str(Path.home() / ".ash"))).expanduser()
+    chat_dir = ash_home / "chats" / "telegram" / str(settings.telegram_chat_id)
+    state_path = chat_dir / "state.json"
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(hours=4)
+    title, summary = _focus_title_and_summary(text)
+    thread_id = str(telegram_message_id)
+    focus = {
+        "kind": "email",
+        "source_id": f"email:{email_id}",
+        "title": title,
+        "summary": summary,
+        "telegram_message_id": str(telegram_message_id),
+        "thread_id": thread_id,
+        "entities": _focus_entities(text),
+        "metadata": {"integration": "email_forward_summary"},
+        "created_at": now.isoformat().replace("+00:00", "Z"),
+        "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        state = _load_chat_state(state_path, str(settings.telegram_chat_id))
+        state["active_focus"] = [
+            item
+            for item in state.get("active_focus", [])
+            if not (
+                item.get("kind") == focus["kind"]
+                and item.get("source_id") == focus["source_id"]
+            )
+        ]
+        state["active_focus"].append(focus)
+        state["active_focus"] = state["active_focus"][-8:]
+        state.setdefault("thread_index", {})[str(telegram_message_id)] = thread_id
+        state["active_thread_id"] = thread_id
+        state["active_thread_updated_at"] = focus["created_at"]
+        state["active_thread_reason"] = "external_focus"
+        state["updated_at"] = focus["created_at"]
+        chat_dir.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2, default=str))
+    except Exception:
+        # The Telegram alert has already been sent; focus registration is best effort.
+        return
+
+
+def _load_chat_state(path: Path, chat_id: str) -> dict[str, Any]:
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return {
+        "chat": {"id": chat_id, "type": "private", "title": None},
+        "participants": [],
+        "thread_index": {},
+        "mutation_confirmations": [],
+        "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _focus_title_and_summary(text: str) -> tuple[str, str]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    title = lines[0] if lines else "School email"
+    summary = " ".join(lines[:4]) if lines else title
+    return _short(title, 120), _short(summary, 360)
+
+
+def _focus_entities(text: str) -> list[str]:
+    seen: set[str] = set()
+    entities: list[str] = []
+    for word in _WORD_RE.findall(text or ""):
+        normalized = word.lower()
+        if len(normalized) < 3 or normalized in _STOPWORDS or normalized in seen:
+            continue
+        seen.add(normalized)
+        entities.append(normalized)
+        if len(entities) >= 20:
+            break
+    return entities
