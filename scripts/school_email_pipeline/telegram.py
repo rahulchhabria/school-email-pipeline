@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -247,6 +249,36 @@ def _register_email_focus(
     }
 
     try:
+        # Persist the delivered text and durable source link, not just a focus
+        # entry that expires. Ash can recover the email through this thread.
+        chat_dir.mkdir(parents=True, exist_ok=True)
+        history_path = chat_dir / "history.jsonl"
+        recorded = False
+        if history_path.exists():
+            with history_path.open() as stream:
+                for line in stream:
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    if str((entry.get("metadata") or {}).get("external_id", "")) == thread_id:
+                        recorded = True
+                        break
+        if not recorded:
+            entry = {
+                "id": str(uuid.uuid4()),
+                "role": "assistant",
+                "content": text,
+                "created_at": focus["created_at"],
+                "metadata": {
+                    "external_id": thread_id,
+                    "thread_id": thread_id,
+                    "source": "email_forward_summary",
+                    "source_id": f"email:{email_id}",
+                },
+            }
+            with history_path.open("a") as stream:
+                stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
         state = _load_chat_state(state_path, str(settings.telegram_chat_id))
         state["active_focus"] = [
             item
@@ -267,6 +299,7 @@ def _register_email_focus(
         state_path.write_text(json.dumps(state, indent=2, default=str))
     except Exception:
         # The Telegram alert has already been sent; focus registration is best effort.
+        logging.getLogger(__name__).exception("email_delivery_persistence_failed")
         return
 
 

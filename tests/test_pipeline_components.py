@@ -577,3 +577,21 @@ def test_register_email_focus_writes_chat_state(tmp_path: Path, monkeypatch) -> 
     assert state["active_focus"][-1]["kind"] == "email"
     assert state["active_focus"][-1]["source_id"] == "email:12"
     assert "practice" in state["active_focus"][-1]["entities"]
+
+
+def test_email_delivery_records_exact_text_and_source_once(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ASH_HOME", str(tmp_path / "ash-home"))
+    settings = _settings(tmp_path)
+    settings = PipelineSettings(**{**settings.__dict__, "telegram_chat_id": "chat-1"})
+    text = "Fall Fest 2026\nEvent: October 17, 11am–2pm\nPlace: SF Day"
+    for _ in range(2):
+        _register_email_focus(settings, 1077, 1860, text)
+    history = tmp_path / "ash-home/chats/telegram/chat-1/history.jsonl"
+    entries = [json.loads(line) for line in history.read_text().splitlines()]
+    assert len(entries) == 1
+    assert entries[0]["content"] == text
+    assert entries[0]["role"] == "assistant"
+    assert entries[0]["metadata"] == {
+        "external_id": "1860", "thread_id": "1860",
+        "source": "email_forward_summary", "source_id": "email:1077",
+    }
